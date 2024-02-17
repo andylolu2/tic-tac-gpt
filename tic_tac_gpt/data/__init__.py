@@ -10,6 +10,7 @@ class TicTacToeDataset(PreloadDataset):
     pad_token: int = 13
     vocab_size: int = 14
     max_seq_len: int = 11  # bos + 9 moves + result
+    ENTROPY: float = 1.345254
 
     def __init__(self, data_file: Path | str):
         data_file = Path(data_file)
@@ -20,7 +21,7 @@ class TicTacToeDataset(PreloadDataset):
                 item = json.loads(line)
                 x.append(self.encode(item["seq"] + [item["result"]]))
 
-        x = torch.nested.nested_tensor(x).to_padded_tensor(self.pad_token)
+        x = torch.stack(x)
         super().__init__(x, device="cuda" if torch.cuda.is_available() else "cpu")
 
     @classmethod
@@ -36,6 +37,7 @@ class TicTacToeDataset(PreloadDataset):
                     x.append(10)
                 case "draw":
                     x.append(11)
+        x = x + [cls.pad_token] * (cls.max_seq_len - len(x))
         return torch.tensor(x, dtype=torch.long)
 
     @classmethod
@@ -46,7 +48,7 @@ class TicTacToeDataset(PreloadDataset):
                 case cls.bos_token:
                     x.append("[BOS]")
                 case cls.pad_token:
-                    x.append("[PAD]")
+                    pass
                 case 9:
                     x.append("first")
                 case 10:
@@ -59,7 +61,7 @@ class TicTacToeDataset(PreloadDataset):
 
 
 if __name__ == "__main__":
-    data_file = Path("out/dataset/train.jsonl")
+    data_file = Path("out/dataset/50_50/train.jsonl")
     dataset = TicTacToeDataset(data_file)
 
     print(dataset[0][0])
