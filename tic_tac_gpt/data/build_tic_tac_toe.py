@@ -1,69 +1,26 @@
 import json
-from dataclasses import dataclass
+import random
 from pathlib import Path
 
 from absl import app, flags, logging
 
+from tic_tac_gpt.data import TicTacToeState
+
 FLAGS = flags.FLAGS
 flags.DEFINE_string("output_dir", "out/dataset", "Output directory")
 flags.DEFINE_float("train_split", 0.5, "Train split")
-
-
-@dataclass
-class TicTacToeState:
-    game_sequence: list[int]
-
-    def __repr__(self):
-        cells = [[" ", " ", " "] for _ in range(3)]
-        for i, pos in enumerate(self.game_sequence):
-            player = "X" if i % 2 == 0 else "O"
-            cells[pos // 3][pos % 3] = player
-        s = "\n".join(["|".join(row) for row in cells])
-        return s
-
-    @property
-    def board(self):
-        board = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
-        for i, pos in enumerate(self.game_sequence):
-            player = 1 if i % 2 == 0 else -1
-            board[pos // 3][pos % 3] = player
-        return board
-
-    @property
-    def result(self) -> str:
-        winning_positions = [
-            [0, 1, 2],
-            [3, 4, 5],
-            [6, 7, 8],
-            [0, 3, 6],
-            [1, 4, 7],
-            [2, 5, 8],
-            [0, 4, 8],
-            [2, 4, 6],
-        ]
-        first_moves = set(self.game_sequence[::2])
-        second_moves = set(self.game_sequence[1::2])
-        for positions in winning_positions:
-            if all(pos in first_moves for pos in positions):
-                return "first"
-            if all(pos in second_moves for pos in positions):
-                return "second"
-
-        return "draw" if len(self.game_sequence) == 9 else "in_progress"
-
-    def next_states(self):
-        possible_moves = set(range(9)) - set(self.game_sequence)
-        for move in sorted(possible_moves):
-            yield TicTacToeState(self.game_sequence + [move])
+flags.DEFINE_bool("random_split", False, "Random or skewed split")
 
 
 def all_games():
     def _all_games_from_state(state: TicTacToeState):
-        if state.result != "in_progress":
+        is_terminal = True
+        for next_state in state.next_states():
+            yield from _all_games_from_state(next_state)
+            is_terminal = False
+
+        if is_terminal:
             yield state
-        else:
-            for next_state in state.next_states():
-                yield from _all_games_from_state(next_state)
 
     return _all_games_from_state(TicTacToeState([]))
 
@@ -87,7 +44,11 @@ def main(_):
         open(out_dir / "test.jsonl", "w") as f_test,
     ):
         for i, line in enumerate(f):
-            if i < FLAGS.train_split * n_games:
+            if FLAGS.random_split:
+                is_train = random.random() < FLAGS.train_split
+            else:
+                is_train = i < FLAGS.train_split * n_games
+            if is_train:
                 f_train.write(line)
             else:
                 f_test.write(line)
