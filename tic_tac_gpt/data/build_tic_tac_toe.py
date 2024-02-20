@@ -33,7 +33,7 @@ def main(_):
     with open(out_dir / "games.jsonl", "w") as f:
         for game in all_games():
             n_games += 1
-            item = {"seq": game.game_sequence, "result": game.result}
+            item = {"seq": game.sequence, "result": game.result}
             f.write(json.dumps(item) + "\n")
 
     logging.info(f"Generated {n_games} games")

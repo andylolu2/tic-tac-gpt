@@ -11,10 +11,10 @@ class TicTacToeState:
     game_sequence: list[int]
 
     def __repr__(self):
-        cells = [[" ", " ", " "] for _ in range(3)]
+        cells = [["  ", "  ", "  "] for _ in range(3)]
         for i, pos in enumerate(self.game_sequence):
             player = "X" if i % 2 == 0 else "O"
-            cells[pos // 3][pos % 3] = player
+            cells[pos // 3][pos % 3] = player + str(i)
         s = "\n".join(["|".join(row) for row in cells])
         return s
 
@@ -22,7 +22,7 @@ class TicTacToeState:
     def board(self):
         board = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
         for i, pos in enumerate(self.game_sequence):
-            player = 1 if i % 2 == 0 else -1
+            player = 1 if i % 2 == 0 else 2
             board[pos // 3][pos % 3] = player
         return board
 
@@ -56,6 +56,10 @@ class TicTacToeState:
     def next_states(self):
         for move in sorted(self.next_moves()):
             yield TicTacToeState(self.game_sequence + [move])
+
+    def sequence(self):
+        for i in range(len(self.game_sequence) + 1):
+            yield TicTacToeState(self.game_sequence[:i])
 
 
 class TicTacToeDataset(PreloadDataset):
@@ -118,6 +122,12 @@ class TicTacToeDataset(PreloadDataset):
     @classmethod
     def decode(cls, input: torch.Tensor) -> list[int | str]:
         return [cls.decode_one(c) for c in input.tolist()]
+
+
+def tensor_to_state(tensor: torch.Tensor) -> TicTacToeState:
+    seq = TicTacToeDataset.decode(tensor)
+    seq = [s for s in seq if isinstance(s, int)]
+    return TicTacToeState(seq)
 
 
 if __name__ == "__main__":
