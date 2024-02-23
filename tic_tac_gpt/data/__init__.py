@@ -11,12 +11,23 @@ class TicTacToeState:
     game_sequence: list[int]
 
     def __repr__(self):
-        cells = [["  ", "  ", "  "] for _ in range(3)]
-        for i, pos in enumerate(self.game_sequence):
-            player = "X" if i % 2 == 0 else "O"
-            cells[pos // 3][pos % 3] = player + str(i)
-        s = "\n".join(["|".join(row) for row in cells])
-        return s
+        def board_cells(seq):
+            cells = [[" ", " ", " "] for _ in range(3)]
+            for i, pos in enumerate(seq):
+                player = "X" if i % 2 == 0 else "O"
+                cells[pos // 3][pos % 3] = player
+            rows = ["|".join(row) for row in cells]
+            return rows
+
+        boards = []
+        for i in range(len(self.game_sequence) + 1):
+            boards.append(board_cells(self.game_sequence[:i]))
+
+        full_rows = []
+        for row in zip(*boards):
+            full_rows.append("  ".join(row))
+        full_game = "\n".join(full_rows)
+        return full_game
 
     @property
     def board(self):
