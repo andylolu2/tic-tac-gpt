@@ -14,6 +14,59 @@
   - L0H2: Mean across all positions "All the moves played so far"
   - L0H3: Attend to moves played by current player "My moves so far"
   - The outputs of L0H1 and L0H3 are written to the residual stream in independent basis.
-- L1H2 seem to matter a lot when determining the result of a game.
+- L1H1 seem to matter a lot when determining the result of a game. It might be computing "given the game terminates now, who wins?"
 - The `resid_post` activations of the second token has rank 72, is a coincidence that this is 9*8 (the number of possible two-move sequences)? No!
   
+
+# Heads analysis
+
+L0:
+- H0: Similar to H2
+- H1: Similar to H3
+- H2: Mean across all positions "All the moves played so far". Directly responsible suppressing played moves.
+- H3: Attend to moves played by current player "My moves so far". Suppress moves played by the current player.
+
+L1:
+- H0: Alternates between supporting and suppressing `[X]` near the end of the game. Also generally activates at the end of the game.
+- H1: Supports both `[X]` and `[O]` when the game terminates (maybe not). Seems to play a large role in shorter games. Always seems to "pick the right side" when the game ends.
+- H2: Boosts the logit of `[D]` on the 9th move (where the game always ends).
+- H3: Directly responsible for decreasing the probability of moves that have been played so far.
+
+
+# 1-layer model analysis
+
+## Heads
+- L0H0: Attend to my moves.
+- L0H1: Attend to opponent's moves.
+
+
+## Neurons
+
+`[O]` table:
+
+| Move \ Pattern | V1  | V2  | V3  | H1  | H2  | H3  | X1  | X2  |
+| -------------- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 6              |     |     |     |     |     |     |     |     |
+| 8              | 469 | 128 | 55  | 75  | 342 | 181 | 77  | 450 |
+
+`[X]` table:
+
+| Move \ Pattern | V1  | V2  | V3  | H1  | H2  | H3  | X1  | X2  |
+| -------------- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 5 (Same as 9)  |     |     |     |     |     |     |     |     |
+| 7 (Same as 9)  |     |     |     |     |     |     |     |     |
+| 9              | 264 | 1   | 197 | 230 | 17  | 44  | 374 | 337 |
+
+`[D]`: 52
+
+| Move \ Position | 0             | 1   | 2   | 3   | 4      | 5   | 6       | 7     | 8      |
+| --------------- | ------------- | --- | --- | --- | ------ | --- | ------- | ----- | ------ |
+| 1               | (141)/318/367 | 389 | 145 | 319 | 172    | 487 | 36      | 247   | 436    |
+| 2               |               |     | 145 |     |        |     |         |       | 277    |
+| 3               |               |     | 307 |     |        |     |         | 28/29 | 28/29  |
+| 4               |               |     |     |     |        |     |         |       | -28/29 |
+| 5               |               |     | 280 | 24  | 24/147 | 24  | 147/280 |       |        |
+| 6               |               |     |     |     |        |     |         |       |        |
+| 7               |               |     |     |     |        |     |         |       |        |
+| 8               |               |     |     |     |        |     |         |       |        |
+| 9               |               |     |     |     |        |     |         |       |        |

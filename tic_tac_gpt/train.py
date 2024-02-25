@@ -38,8 +38,8 @@ def main(_):
     model = HookedTransformer(
         HookedTransformerConfig(
             n_layers=1,
-            d_model=256,
-            d_head=64,
+            d_model=32,
+            d_head=16,
             n_ctx=ds_train.max_seq_len,
             d_vocab=ds_train.vocab_size,
             act_fn="solu_ln",
@@ -59,10 +59,10 @@ def main(_):
                 raise ValueError(f"Unknown parameter type {type(p)}")
     optimizer = AdamW(
         [
-            {"params": list(decay), "weight_decay": 0.0},
+            {"params": list(decay), "weight_decay": 0.01},
             {"params": list(no_decay), "weight_decay": 0.0},
         ],
-        lr=3e-5,
+        lr=3e-3,
     )
 
     logging.info(f"Config:\n{json.dumps(model.cfg.to_dict(), indent=2, default=str)}")

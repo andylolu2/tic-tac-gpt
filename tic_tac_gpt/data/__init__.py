@@ -29,6 +29,9 @@ class TicTacToeState:
         full_game = "\n".join(full_rows)
         return full_game
 
+    def __len__(self):
+        return len(self.game_sequence)
+
     @property
     def board(self):
         board = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
@@ -53,11 +56,11 @@ class TicTacToeState:
         second_moves = set(self.game_sequence[1::2])
         for positions in winning_positions:
             if all(pos in first_moves for pos in positions):
-                return "first"
+                return "[X]"
             if all(pos in second_moves for pos in positions):
-                return "second"
+                return "[O]"
 
-        return "draw" if len(self.game_sequence) == 9 else "in_progress"
+        return "[D]" if len(self.game_sequence) == 9 else "in_progress"
 
     def next_moves(self):
         if self.result != "in_progress":
@@ -87,7 +90,7 @@ class TicTacToeDataset(PreloadDataset):
         with open(data_file, "r") as f:
             for line in f:
                 item = json.loads(line)
-                x.append(self.encode(["[BOS]", *item["seq"], item["result"]]))
+                x.append(self.encode(["[B]", *item["seq"], item["result"]]))
 
         x = torch.nested.nested_tensor(x).to_padded_tensor(self.pad_token)
         super().__init__(x, device="cuda" if torch.cuda.is_available() else "cpu")
@@ -97,15 +100,15 @@ class TicTacToeDataset(PreloadDataset):
         match input:
             case int():
                 return input
-            case "first":
+            case "[X]":
                 return 9
-            case "second":
+            case "[O]":
                 return 10
-            case "draw":
+            case "[D]":
                 return 11
-            case "[BOS]":
+            case "[B]":
                 return cls.bos_token
-            case "[PAD]":
+            case "[P]":
                 return cls.pad_token
             case _:
                 raise ValueError(f"Unknown input {input}")
@@ -114,15 +117,15 @@ class TicTacToeDataset(PreloadDataset):
     def decode_one(cls, input: int) -> int | str:
         match input:
             case cls.bos_token:
-                return "[BOS]"
+                return "[B]"
             case cls.pad_token:
-                return "[PAD]"
+                return "[P]"
             case 9:
-                return "first"
+                return "[X]"
             case 10:
-                return "second"
+                return "[O]"
             case 11:
-                return "draw"
+                return "[D]"
             case _:
                 return input
 
