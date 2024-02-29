@@ -38,12 +38,12 @@ def main(_):
     model = HookedTransformer(
         HookedTransformerConfig(
             n_layers=1,
-            d_model=32,
-            d_head=16,
+            d_model=128,
+            d_head=64,
             n_ctx=ds_train.max_seq_len,
             d_vocab=ds_train.vocab_size,
             act_fn="solu_ln",
-            attn_only=True,
+            attn_only=False,
             normalization_type="LN",
         ),
     )
@@ -59,10 +59,10 @@ def main(_):
                 raise ValueError(f"Unknown parameter type {type(p)}")
     optimizer = AdamW(
         [
-            {"params": list(decay), "weight_decay": 0.01},
+            {"params": list(decay), "weight_decay": 0.1},
             {"params": list(no_decay), "weight_decay": 0.0},
         ],
-        lr=3e-3,
+        lr=3e-4,
     )
 
     logging.info(f"Config:\n{json.dumps(model.cfg.to_dict(), indent=2, default=str)}")
@@ -119,7 +119,7 @@ def main(_):
                 v = torch.stack(v).mean().item()
                 logging.info("%s: %.4f", k, v)
 
-            F.save(output_dir / "model.pt", model.state_dict())
+            F.save(output_dir / f"model_{step}.pt", model.state_dict())
 
 
 if __name__ == "__main__":
