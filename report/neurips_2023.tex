@@ -47,8 +47,11 @@
 \bibliographystyle{plainnat}
 
 \newcommand{\todo}[1]{\textcolor{red}{TODO: #1}}
-\renewcommand{\v}[1]{\mathbf{\bm{#1}}}
-\newcommand{\m}[1]{\mathbf{\bm{#1}}}
+\newcommand{\ttgpt}{TicTacGPT\xspace}
+
+\renewcommand{\v}[1]{#1}
+\newcommand{\m}[1]{#1}
+\DeclareMathOperator{\softmax}{softmax}
 
 \hypersetup{
     colorlinks,
@@ -57,7 +60,7 @@
     urlcolor={black}
 }
 
-\title{Efficient Sparse Training with Structured Dropout}
+\title{Fully Understanding a Sequence Model of Tic-Tac-Toe}
 
 \author{%
   Andy Lo \\
@@ -81,6 +84,29 @@
 \section{Introduction}
 
 Test \cite{orthello-gpt,linear-orthello-gpt}
+
+\section{Background}
+
+\section{\ttgpt}
+
+
+\begin{equation}
+    \begin{aligned}
+        \v{x} & = \m{W}_E \v{s} + \m{W}_P \v{p}       \\
+        h_1   & = A_1 \otimes \m{W}^{(1)}_{OV} \v{x}  \\
+        h_2   & = A_2 \otimes \m{W}^{(2)}_{OV} \v{x}  \\
+        \v{h} & = \v{x}
+        + A_1 \otimes \m{W}^{(1)}_{OV} \v{x}
+        + A_2 \otimes \m{W}^{(2)}_{OV} \v{x}          \\
+        \v{y} & = \m{W}_U (\v{h} + \text{MLP}(\v{h})) \\
+        \v{y} & = \m{W}_U (
+        \v{x}
+        + A_1 \otimes \m{W}^{(1)}_{OV} \v{x}
+        + A_2 \otimes \m{W}^{(2)}_{OV} \v{x}
+        + \text{MLP}(\v{h})
+        )
+    \end{aligned}
+\end{equation}
 
 \bibliography{references}
 

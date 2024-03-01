@@ -3625,6 +3625,20 @@ testing = ["h5py (>=3.7.0)", "huggingface_hub (>=0.12.1)", "hypothesis (>=6.70.2
 torch = ["safetensors[numpy]", "torch (>=1.10)"]
 
 [[package]]
+name = "scienceplots"
+version = "2.1.1"
+description = "Format Matplotlib for scientific plotting"
+optional = false
+python-versions = "*"
+files = [
+    {file = "SciencePlots-2.1.1-py3-none-any.whl", hash = "sha256:2e64d2e93b4f98702f30145dbb70d238f5dc315e227fec331489631232dfc9e0"},
+    {file = "SciencePlots-2.1.1.tar.gz", hash = "sha256:d8d197e3410f87ebdad0b9c265eaab596094fb082d97123e835f6bc32800ab54"},
+]
+
+[package.dependencies]
+matplotlib = "*"
+
+[[package]]
 name = "scikit-learn"
 version = "1.4.1.post1"
 description = "A set of python modules for machine learning and data mining"
@@ -4815,4 +4829,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "ab5eec7b03b9e6d35ed93b4f44d42d7d30cde4d4d187e4c37f31cf11bc337ee9"
+content-hash = "32da12b75d9f7eeb4fe0c224c0d86f854078f244a17348d8d31aa01ba58bbb1b"

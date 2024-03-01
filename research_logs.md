@@ -70,3 +70,30 @@ L1:
 | 7               |               |     |     |     |        |     |         |       |        |
 | 8               |               |     |     |     |        |     |         |       |        |
 | 9               |               |     |     |     |        |     |         |       |        |
+
+## New model neurons
+
+`[O]` table:
+
+| Pattern | V1  | V2  | V3    | H1  | H2  | H3  | X1    | X2  |
+| ------- | --- | --- | ----- | --- | --- | --- | ----- | --- |
+|         | 147 | 508 | (193) | 67  | 50  | 511 | (347) | 269 |
+
+`[X]` table:
+
+| Pattern | V1  | V2  | V3  | H1  | H2  | H3  | X1  | X2  |
+| ------- | --- | --- | --- | --- | --- | --- | --- | --- |
+|         | 417 | 121 | 52  | 32  | 154 | 46  | 246 | 74  |
+
+`[D]`: 135/244
+
+| Position | 0   | 1   | 2   | 3   | 4       | 5       | 6   | 7   | 8   |
+| -------- | --- | --- | --- | --- | ------- | ------- | --- | --- | --- |
+|          | 319 | 455 | 342 | 62  | 323/505 | 110/349 | 433 | 277 | 83  |
+
+
+## Claims
+
+- The attention patterns are solely a function of the position.
+- The output logits are solely a function of the MLP outputs.
+- The model learns some but not all symmetries of the problem (player symmetry but not board symmetry).
