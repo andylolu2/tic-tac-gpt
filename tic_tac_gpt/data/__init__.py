@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterator
 
 import torch
 from ml_tools.preload_dataset import PreloadDataset
@@ -31,6 +32,19 @@ class TicTacToeState:
 
     def __len__(self):
         return len(self.game_sequence)
+
+    @staticmethod
+    def all_games() -> Iterator["TicTacToeState"]:
+        def _all_games_from_state(state: TicTacToeState):
+            is_terminal = True
+            for next_state in state.next_states():
+                yield from _all_games_from_state(next_state)
+                is_terminal = False
+
+            if is_terminal:
+                yield state
+
+        return _all_games_from_state(TicTacToeState([]))
 
     @property
     def board(self):
@@ -83,17 +97,39 @@ class TicTacToeDataset(PreloadDataset):
     max_seq_len: int = 11  # bos + 9 moves + result
     ENTROPY: float = 1.345254
 
-    def __init__(self, data_file: Path | str):
+    @staticmethod
+    def from_file(data_file: Path | str) -> "TicTacToeDataset":
         data_file = Path(data_file)
         assert data_file.suffix == ".jsonl"
         x = []
         with open(data_file, "r") as f:
             for line in f:
                 item = json.loads(line)
-                x.append(self.encode(["[B]", *item["seq"], item["result"]]))
+                x.append(TicTacToeDataset.encode(["[B]", *item["seq"], item["result"]]))
+        x = torch.nested.nested_tensor(x).to_padded_tensor(TicTacToeDataset.pad_token)
+        return TicTacToeDataset(x)
 
-        x = torch.nested.nested_tensor(x).to_padded_tensor(self.pad_token)
-        super().__init__(x, device="cuda" if torch.cuda.is_available() else "cpu")
+    @classmethod
+    def from_states(cls, states: Iterator[TicTacToeState]) -> "TicTacToeDataset":
+        x = []
+        for state in states:
+            x.append(cls.state_to_tensor(state))
+        x = torch.nested.nested_tensor(x).to_padded_tensor(TicTacToeDataset.pad_token)
+        return TicTacToeDataset(x)
+
+    @classmethod
+    def state_to_tensor(cls, state: TicTacToeState) -> torch.Tensor:
+        seq = ["[B]", *state.game_sequence]
+        result = state.result
+        if result != "in_progress":
+            seq.append(result)
+        return cls.encode(seq)
+
+    @classmethod
+    def tensor_to_state(cls, tensor: torch.Tensor) -> TicTacToeState:
+        seq = cls.decode(tensor)
+        seq = [s for s in seq if isinstance(s, int)]
+        return TicTacToeState(seq)
 
     @classmethod
     def encode_one(cls, input: int | str) -> int:
@@ -146,7 +182,7 @@ def tensor_to_state(tensor: torch.Tensor) -> TicTacToeState:
 
 if __name__ == "__main__":
     data_file = Path("out/dataset/50_50/train.jsonl")
-    dataset = TicTacToeDataset(data_file)
+    dataset = TicTacToeDataset.from_file(data_file)
 
     print(dataset[0][0])
     print(dataset.decode(dataset[0][0]))

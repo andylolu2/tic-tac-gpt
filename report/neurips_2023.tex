@@ -49,8 +49,9 @@
 \newcommand{\todo}[1]{\textcolor{red}{TODO: #1}}
 \newcommand{\ttgpt}{TicTacGPT\xspace}
 
-\renewcommand{\v}[1]{#1}
-\newcommand{\m}[1]{#1}
+\renewcommand{\v}[1]{\mathbf{\bm{#1}}}
+\newcommand{\m}[1]{\mathbf{\bm{#1}}}
+\newcommand{\I}{\m{I}}
 \DeclareMathOperator{\softmax}{softmax}
 
 \hypersetup{
@@ -92,18 +93,23 @@ Test \cite{orthello-gpt,linear-orthello-gpt}
 
 \begin{equation}
     \begin{aligned}
-        \v{x} & = \m{W}_E \v{s} + \m{W}_P \v{p}       \\
-        h_1   & = A_1 \otimes \m{W}^{(1)}_{OV} \v{x}  \\
-        h_2   & = A_2 \otimes \m{W}^{(2)}_{OV} \v{x}  \\
-        \v{h} & = \v{x}
-        + A_1 \otimes \m{W}^{(1)}_{OV} \v{x}
-        + A_2 \otimes \m{W}^{(2)}_{OV} \v{x}          \\
-        \v{y} & = \m{W}_U (\v{h} + \text{MLP}(\v{h})) \\
-        \v{y} & = \m{W}_U (
+        \v{x}   & = \I \otimes (\m{W}_E \v{s} + \m{W}_P \v{p})       \\
+        \v{h}_1 & = \m{A}_1 \otimes \m{W}^{(1)}_{OV} \v{x}           \\
+        \v{h}_2 & = \m{A}_2 \otimes \m{W}^{(2)}_{OV} \v{x}           \\
+        \v{h}   & = \v{x}
+        + \m{A}_1 \otimes \m{W}^{(1)}_{OV} \v{x}
+        + \m{A}_2 \otimes \m{W}^{(2)}_{OV} \v{x}                     \\
+        \v{y}   & = (\I \otimes \m{W}_U) (\v{h} + \text{MLP}(\v{h})) \\
+        \v{y}   & = (\I \otimes \m{W}_U) (
         \v{x}
-        + A_1 \otimes \m{W}^{(1)}_{OV} \v{x}
-        + A_2 \otimes \m{W}^{(2)}_{OV} \v{x}
+        + \m{A}_1 \otimes \m{W}^{(1)}_{OV} \v{x}
+        + \m{A}_2 \otimes \m{W}^{(2)}_{OV} \v{x}
         + \text{MLP}(\v{h})
+        )                                                            \\
+        \v{y}   & = (\I \otimes \m{W}_U \m{W}_{out})
+        \phi(\I \otimes \m{W}_{in} \v{x}
+        + \m{A}_1 \otimes \m{W}_{in} \m{W}^{(1)}_{OV} \v{x}
+        + \m{A}_2 \otimes \m{W}_{in} \m{W}^{(2)}_{OV} \v{x}
         )
     \end{aligned}
 \end{equation}

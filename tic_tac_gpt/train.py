@@ -28,8 +28,8 @@ def main(_):
     output_dir = Path(FLAGS.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    ds_train = TicTacToeDataset(FLAGS.train_file)
-    ds_test = TicTacToeDataset(FLAGS.test_file)
+    ds_train = TicTacToeDataset.from_file(FLAGS.train_file)
+    ds_test = TicTacToeDataset.from_file(FLAGS.test_file)
     train_loader = InfiniteDataLoader(
         ds_train, batch_size=FLAGS.batch_size, shuffle=True, drop_last=True
     )

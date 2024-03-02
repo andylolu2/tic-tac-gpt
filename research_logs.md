@@ -97,3 +97,8 @@ L1:
 - The attention patterns are solely a function of the position.
 - The output logits are solely a function of the MLP outputs.
 - The model learns some but not all symmetries of the problem (player symmetry but not board symmetry).
+
+| Metric\Model | Chance   | Full model | MLP-only | MLP-only (no LN) |
+| ------------ | -------- | ---------- | -------- | ---------------- |
+| KL (nats)    | 2.475220 | 0.002211   | 0.005847 | 0.009598         |
+| Accuracy     | 13.58%   | 100%       | 100%     | 100%             |
