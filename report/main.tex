@@ -1,0 +1,195 @@
+\documentclass{article}
+
+
+% if you need to pass options to natbib, use, e.g.:
+\PassOptionsToPackage{sort, numbers}{natbib}
+% before loading neurips_2023
+
+
+% ready for submission
+% \usepackage{neurips_2023}
+
+
+% to compile a preprint version, e.g., for submission to arXiv, add add the
+% [preprint] option:
+%     \usepackage[preprint]{neurips_2023}
+
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+\usepackage[final]{neurips_2023}
+
+
+% to avoid loading the natbib package, add option nonatbib:
+%    \usepackage[nonatbib]{neurips_2023}
+
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{xspace}         % space after command
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{bm}
+\usepackage{physics}
+\usepackage[capitalize]{cleveref}       % smart references
+\usepackage{multirow}
+\usepackage{minted}
+\usepackage[font=small]{caption}
+\usepackage[nolist]{acronym}  % acronyms
+\usepackage{tikz}  % draw board
+\usepackage{adjustbox}  % centering tikz in table
+
+\bibliographystyle{plainnat}
+
+\newcommand{\todo}[1]{\textcolor{red}{TODO: #1}}
+\newcommand{\ttgpt}{TicTacGPT\xspace}
+\newcommand{\ttt}{Tic-Tac-Toe\xspace}
+
+\renewcommand{\v}[1]{\mathbf{\bm{#1}}}
+\newcommand{\m}[1]{\mathbf{\bm{#1}}}
+\newcommand{\I}{\m{I}}
+\DeclareMathOperator{\softmax}{softmax}
+
+\newcounter{num}
+\newcommand{\tictactoe}[1]{
+\begin{tikzpicture}[scale=0.4]
+    \def\r{1.4mm}
+    \tikzset{
+        circ/.pic={\draw circle (\r);},
+        cross/.pic={\draw (-\r,-\r) -- (\r,\r) (-\r,\r) -- (\r,-\r);},
+    }
+        
+    % The grid
+    \foreach \i in {0,1,2,3} \draw (\i,0) -- (\i,3) (0,\i) -- (3,\i);
+    
+    % Numbering the cells
+    \setcounter{num}{0}
+    \foreach \y in {0,...,2}
+        \foreach \x in {0,...,2}
+            {
+            \coordinate (\thenum) at (\x+0.5,2-\y+0.5);
+            %\node[opacity=0.5] at (\thenum) {\sffamily\thenum}; % Uncomment to see numbers in the cells
+            \addtocounter{num}{1}
+            }
+                
+                
+    \def\X{X} \def\O{O} \def\n{n}
+    
+    \foreach \l [count = \i from 0] in {#1}
+        {
+        \if\l\X \path (\i) pic{cross};
+        \else\if\l\O \path (\i) pic{circ};
+        \else\if\l\n \node[opacity=0.5] at (\i) {\sffamily\i};
+        \fi
+        \fi
+        \fi
+        }
+\end{tikzpicture}
+}
+\newcommand{\cbox}[1]{\adjustbox{valign=c}{#1}}
+
+
+\hypersetup{
+    colorlinks,
+    linkcolor={red!50!black},
+    citecolor={blue!50!black},
+    urlcolor={black}
+}
+
+\title{Fully Understanding a Sequence Model of Tic-Tac-Toe}
+
+\author{%
+  Andy Lo \\
+  Department of Computer Science\\
+  University of Cambridge\\
+  \texttt{cyal4@cam.ac.uk} \\
+}
+
+
+\begin{document}
+
+\begin{acronym}
+    \acro{LLMs}{Large Language Models}
+\end{acronym}
+
+
+\maketitle
+
+
+\begin{abstract}
+    While \ac{LLMs} demonstrate strong capabilities from simple sequence modelling, its inner workings remain as a black-box. In this project, as a step towards interpreting \ac{LLMs}, I fully reverse engineer a toy sequence model trained on \ttt game sequences. \todo{Add results}
+\end{abstract}
+
+
+\section{Introduction}
+
+While the success of deep learning in practice is ubiquitous, interpreting and explaining the behaviour of neural networks remain a difficult problem. The inability to understand the models' internal components is a significant bottleneck to building reliable machine learning systems since typical evaluation methods provides no guarantee when given out-of-distribution inputs. Mechanistic interpretability is an emerging approach to explainability by focusing on tractable, low-level components of a model, using them as an entry point to build an overall understanding of a model's behaviour. This project aims to build upon this line of work, showcasing another example where models are not black boxes and can be made human-interpretable with sufficient effort. \todo{Add citations}
+
+There has been particular interest in understanding sequence models trained with next-token prediction, specifically on whether next-token prediction is sufficient for building generally intelligent models. On one hand, there exists theoretical arguments \citep{bender2020climbing,merrill2021provable} that such models merely learn statistical correlations and thus cannot understand the casual relationships of the underlying data generation process. On the other hand, many empirical studies reveal opposing evidence where models appear to have build accurate world models internally. Unfortunately, models used in practice are often too complex to be understood \emph{fully} as they are often too large and many factors like data selection and training optimisations are not controlled for. Several works have thus shifted its focus to simpler sequence models on synthetic datasets \citep{toshniwal2021learning,orthello-gpt} where the task is well-understood.
+
+This project studies sequence models trained on synthetic game sequences of \ttt. The simplistic nature of the task permits the use of a one-layer transformer that still solves the task perfectly. This greatly simplifies the analysis and allows us to fully reverse engineer the model, resulting in predictable behaviour even on out-of-distribution data. \todo{Explain contributions.}
+
+\section{Background}
+
+This section covers the necessary background to understand the contributions of this project. \cref{sec:related} provides an overview of the most relevant works and how they relate to this project. \cref{sec:math} describes the framework and the notation used later in this paper to describe components of a transformer.
+
+\subsection{Related works} \label{sec:related}
+
+\citet{toshniwal2021learning} were the first to probe for internal world presentations of next-token prediction models. The authors reveal that models trained to predict the next moves in chess track the state of the board internally. \citet{orthello-gpt} extend this idea by studying a next-move prediction model trained on Orthello. They demonstrate that not only do the models track the board state, interventions on the internal representation also have the expected casual effect on the model's outputs. This provides strong evidence that models trained on sequence modelling can in fact ``understand'' the nature of the task rather than simply memorising statistical patterns. \citet{linear-orthello-gpt} further reveal that the board state can be expressed as a linear projection of the internal representation. While such works identify core properties of the model like its internal representations, they still fail to explain the model behaviour in full. For example, no explanation is offered as to \emph{how} the internal board representations are computed. This project aims to close this gap by narrowing the focus to even simpler tasks and models.
+
+\todo{Talk about other MI works}
+
+\subsection{Mathematical framework of transformers} \label{sec:math}
+
+\begin{equation}
+    \begin{aligned}
+        \v{x}   & = \I \otimes (\m{W}_E \v{s} + \m{W}_P \v{p})       \\
+        \v{h}_1 & = \m{A}_1 \otimes \m{W}^{(1)}_{OV} \v{x}           \\
+        \v{h}_2 & = \m{A}_2 \otimes \m{W}^{(2)}_{OV} \v{x}           \\
+        \v{h}   & = \v{x}
+        + \m{A}_1 \otimes \m{W}^{(1)}_{OV} \v{x}
+        + \m{A}_2 \otimes \m{W}^{(2)}_{OV} \v{x}                     \\
+        \v{y}   & = (\I \otimes \m{W}_U) (\v{h} + \text{MLP}(\v{h})) \\
+        \v{y}   & = (\I \otimes \m{W}_U) (
+        \v{x}
+        + \m{A}_1 \otimes \m{W}^{(1)}_{OV} \v{x}
+        + \m{A}_2 \otimes \m{W}^{(2)}_{OV} \v{x}
+        + \text{MLP}(\v{h})
+        )                                                            \\
+        \v{y}   & = (\I \otimes \m{W}_U \m{W}_{out})
+        \phi((\I \otimes \m{W}_{in}
+        + \m{A}_1 \otimes \m{W}_{in} \m{W}^{(1)}_{OV}
+        + \m{A}_2 \otimes \m{W}_{in} \m{W}^{(2)}_{OV}
+        ) \v{x})
+    \end{aligned}
+\end{equation}
+
+\section{\ttgpt}
+
+% \subsection{Why \ttt?}
+
+% \begin{enumerate}
+%     \item Exact computation of the ground-truth model.
+%     \item Solvable by a one-layer transformer.
+%     \item
+% \end{enumerate}
+
+\subsection{Synthetic task and dataset}
+
+\input{figures/game_sample.tex}
+
+Following \cite{orthello-gpt}, each game is represented as the sequence of moves played, where each move of the 9 possible moves are encoded as a separate token. The special beginning-of-sequence token \texttt{[B]} is prepended to every game sequence. A result token also is appended, it is one of \texttt{[X]}, \texttt{[O]} or \texttt{[D]}, representing ``\texttt{X} wins'', ``\texttt{O} wins'' and ``Draw'' respectively. An example of an encoded game is shown in \cref{fig:game-sample}. Ignoring rotational and reflectional symmetries there are 255,168 unique games of \ttt. The train and test dataset is constructed by randomly splitting all the games into two set of equal size.
+
+One might naively think that the task only involves learning what moves are legal and deciding the final outcome of the game. However, there are nuances to the training objective. Since the model is trained on all possible game sequences, the true task is to learn the proportion of possible continuations for each possible next move. For example, the optimal model should assign lower probability to immediately winning moves (one that creates a three-in-a-row) as there is only one continuation (either ``\texttt{X} wins'' or ``\texttt{O} wins'') while non-winning moves have more possible continuations. As shown later, the trained model captures such complexities of the task as well.
+
+\bibliography{references}
+
+\end{document}
