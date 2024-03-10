@@ -56,7 +56,12 @@
 \renewcommand{\v}[1]{\mathbf{\bm{#1}}}
 \newcommand{\m}[1]{\mathbf{\bm{#1}}}
 \newcommand{\I}{\m{I}}
-\DeclareMathOperator{\softmax}{softmax}
+\newcommand{\R}{\mathbb{R}}
+\DeclareMathOperator{\softmax}{Softmax}
+\DeclareMathOperator{\solu}{SoLU}
+\DeclareMathOperator{\layernorm}{LN}
+\DeclareMathOperator{\tril}{Tril}
+\DeclareMathOperator{\attn}{Attn}
 
 \newcounter{num}
 \newcommand{\tictactoe}[1]{
@@ -149,38 +154,50 @@ This section covers the necessary background to understand the contributions of 
 
 \subsection{Mathematical framework of transformers} \label{sec:math}
 
-\begin{equation}
+To conveniently reason about various components of the transformer \citep{vaswani2017attention}, it is helpful to set up a mathematical description of it \citep{elhage2021mathematical}. While the following description maybe verbose, several simplifications can be made when combined with empirical evidence (\cref{sec:simplify}). The notation will only cover one-layer transformers since that is the main focus of this project.
+
+Let $\m{E} \in \R^{s \times v}$ be the one-hot encoded input tokens and $\m{P} \in \R^{s \times s}$ be the one-hot encoded positional indices, where $s$ is the sequence length and $v$ is the vocabulary size. The embedding layer with learnt positional embeddings can be expressed as:
+\begin{equation*}
+    \text{Embed}(\m{E}) = \m{E} \m{W}_E + \m{P} \m{W}_P
+\end{equation*}
+where $\m{W}_E \in \R^{v \times d}$, $\m{W}_P \in \R^{s \times d}$ and $d$ is the hidden dimension of the model.
+
+The core component of the transformer is the attention layer. In this project, we focus on the multi-head, casual, self-attention variant. Each attention head $i$ is parameterised by the query $\m{W}_Q^{(i)} \in \R^{d \times h}$, $\v{b}_Q^{(i)} \in \R^{1 \times h}$, key $\m{W}_K^{(i)} \in \R^{d \times h}$, $\v{b}_K^{(i)} \in \R^{1 \times h}$, value $\m{W}_V^{(i)} \in \R^{d \times h}$, $\v{b}_V^{(i)} \in \R^{1 \times h}$ and output $\m{W}_O^{(i)} \in \R^{h \times d}$, $\v{b}_O^{(i)} \in \R^{1 \times d}$ projections, where $h$ is the head dimension. The attention operator can be expressed as:
+\begin{equation*}
     \begin{aligned}
-        \v{x}   & = \I \otimes (\m{W}_E \v{s} + \m{W}_P \v{p})       \\
-        \v{h}_1 & = \m{A}_1 \otimes \m{W}^{(1)}_{OV} \v{x}           \\
-        \v{h}_2 & = \m{A}_2 \otimes \m{W}^{(2)}_{OV} \v{x}           \\
-        \v{h}   & = \v{x}
-        + \m{A}_1 \otimes \m{W}^{(1)}_{OV} \v{x}
-        + \m{A}_2 \otimes \m{W}^{(2)}_{OV} \v{x}                     \\
-        \v{y}   & = (\I \otimes \m{W}_U) (\v{h} + \text{MLP}(\v{h})) \\
-        \v{y}   & = (\I \otimes \m{W}_U) (
-        \v{x}
-        + \m{A}_1 \otimes \m{W}^{(1)}_{OV} \v{x}
-        + \m{A}_2 \otimes \m{W}^{(2)}_{OV} \v{x}
-        + \text{MLP}(\v{h})
-        )                                                            \\
-        \v{y}   & = (\I \otimes \m{W}_U \m{W}_{out})
-        \phi((\I \otimes \m{W}_{in}
-        + \m{A}_1 \otimes \m{W}_{in} \m{W}^{(1)}_{OV}
-        + \m{A}_2 \otimes \m{W}_{in} \m{W}^{(2)}_{OV}
-        ) \v{x})
+        \attn(\m{X})
+         & = \sum_i \m{A}^{(i)} (\m{X} \m{W}_V^{(i)} + \v{1}_s \v{b}_V^{(i)}) \m{W}_O^{(i)} + \v{1}_s \v{b}_O^{(i)} \\
+        \m{A}^{(i)}
+         & = \softmax\left(
+        \tril\left(
+        \left(\m{X} \m{W}_Q^{(i)} + \v{1}_s \v{b}_Q^{(i)}\right)
+        \left(\m{W}_K^{(i)T} \m{X}^T + \v{b}_K^{(i)T}\v{1}_s^T\right)
+        , -\infty\right)
+        \right)
     \end{aligned}
-\end{equation}
+\end{equation*}
+where $\v{1}_s \in \R^{s \times 1}$ is a vector of ones and $\tril(\m{X}, y)$ fills the upper triangular matrix of $\m{X}$ with $y$. The typical scaling by factor of $1/\sqrt{d}$ in the attention matrix is ignored as it is a linear operation and thus can be folded into the weights.
+
+The other building block is the MLP block which can be expressed as:
+\begin{equation*}
+    \text{MLP}(\m{X}) = \phi(
+    \m{X} \m{W}_{in} + \v{1}_s \m{b}_{in}
+    ) \m{W}_{out} + \v{1}_s \m{b}_{out}
+\end{equation*}
+where $\m{W}_{in} \in \R^{d \times 4d}$, $\v{b}_{in} \in \R^{1 \times 4d}$, $\m{W}_{out} \in \R^{4d \times d}$, $\v{b}_{out} \in \R^{1 \times d}$ and $\phi$ is an elementwise non-linearity.
+
+Putting everything together, the entire transformer $f(\m{E}) \in \R^{s \times v} \to \R^{s \times v}$ can be expressed as:
+\begin{equation*}
+    \begin{aligned}
+        \m{H}_0  & = \text{Embed}(\m{E})                       \\
+        \m{H}_1  & = \m{H}_0 + \attn(\layernorm(\m{H}_0))      \\
+        \m{H}_2  & = \m{H}_1 + \text{MLP}(\layernorm(\m{H}_1)) \\
+        f(\m{E}) & = \layernorm(\m{H_2}) \m{W}_U
+    \end{aligned}
+\end{equation*}
+where $\m{W}_U \in \R^{d \times v}$ and $\layernorm(\m{X})$ represents a LayerNorm which normalises $\m{X}$ column-wise by subtracting the mean and dividing by the standard deviation. The scale and bias parameters of LayerNorm is ignored as they can be folded into the linear projections that proceed them.
 
 \section{\ttgpt}
-
-% \subsection{Why \ttt?}
-
-% \begin{enumerate}
-%     \item Exact computation of the ground-truth model.
-%     \item Solvable by a one-layer transformer.
-%     \item
-% \end{enumerate}
 
 \subsection{Synthetic task and dataset}
 
@@ -189,6 +206,28 @@ This section covers the necessary background to understand the contributions of 
 Following \cite{orthello-gpt}, each game is represented as the sequence of moves played, where each move of the 9 possible moves are encoded as a separate token. The special beginning-of-sequence token \texttt{[B]} is prepended to every game sequence. A result token also is appended, it is one of \texttt{[X]}, \texttt{[O]} or \texttt{[D]}, representing ``\texttt{X} wins'', ``\texttt{O} wins'' and ``Draw'' respectively. An example of an encoded game is shown in \cref{fig:game-sample}. Ignoring rotational and reflectional symmetries there are 255,168 unique games of \ttt. The train and test dataset is constructed by randomly splitting all the games into two set of equal size.
 
 One might naively think that the task only involves learning what moves are legal and deciding the final outcome of the game. However, there are nuances to the training objective. Since the model is trained on all possible game sequences, the true task is to learn the proportion of possible continuations for each possible next move. For example, the optimal model should assign lower probability to immediately winning moves (one that creates a three-in-a-row) as there is only one continuation (either ``\texttt{X} wins'' or ``\texttt{O} wins'') while non-winning moves have more possible continuations. As shown later, the trained model captures such complexities of the task as well.
+
+\subsection{Experiment details}
+
+The training of \ttgpt mostly follows standard practices \citep{radford2019language} for typical prefix \ac{LLMs}. \ttgpt is a one-layer transformer with 128 hidden dimensions, 2 attention heads, 512 MLP dimensions, learnt positional encodings and uses the pre-norm architecture \citep{xiong2020layer}. The only non-standard architectural choice is the use of the Softmax Linear Units ($\solu$) \citep{elhage2022solu} activation function in the MLP. It is defined as:
+\begin{equation*}
+    \solu(\m{X}) = \layernorm(\m{X} \cdot \softmax(\m{X}))
+\end{equation*}
+\citet{elhage2022solu} demonstrated that $\solu$ increases the interpretability of MLP neurons such as by reducing polysemanticity\footnote{Polysemanticity is the phenomenon where neurons respond to multiple unrelated inputs.}\citep{olah2020zoom} while having negligible impact on performance. Empirically I found that models trained with $\solu$ produced slightly `cleaner' activation patterns than standard choices like $\text{GeLU}$ though the effect is not substantial. The model is trained for 40000 steps with batch size 512 and the AdamW optimizer \citep{loshchilov2017decoupled} with learning rate $0.0003$, $\beta_1 = 0.9$, $\beta_2 = 0.999$ and weight decay $0.1$ on non-bias and non-embedding parameters.
+
+\subsection{Three simplifying assumptions} \label{sec:simplify}
+
+\input{figures/eval_table.tex}
+
+This section lays down and provides empirical evidence to several appealing properties of the trained model that make it particularly friendly to mechanistic analysis. The remainder of this report will base its argument on such simplifications.
+
+\subsubsection{\ttgpt solves \ttt}
+
+The first observation is that a one-layer transformer is sufficient to solve the task almost optimally. One of the advantages of working with a toy problem like \ttt is that the optimal policy can be computed exactly, by enumerating all game sequences. This makes evaluation much simpler as we can directly compare the trained models to the optimal model. \cref{table:eval} shows such comparisons for \ttgpt, a two-layer counterpart\footnote{The two-layer model uses the same hyperparameters, except having two layers and is trained with a lower weight decay of 0.03 (as it failed to converge with weight decay 0.1).} and a baseline constant output model. \ttgpt achieves much better performance than random, and approaches 100\% accuracy on other classification metrics. Surprisingly, it even outperforms the two-layer transformer which may be attributed to reduced overfitting. I thereby conclude that \ttgpt solves \ttt and thus the investigation of \emph{``How does a sequence model solve \ttt?''} can be limited to \emph{``How does \ttgpt solve \ttt?''}.
+
+\subsubsection{Attention is only a function of position}
+
+\subsubsection{Output is only a function of MLP activations}
 
 \bibliography{references}
 

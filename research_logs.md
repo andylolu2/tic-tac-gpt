@@ -98,7 +98,17 @@ L1:
 - The output logits are solely a function of the MLP outputs.
 - The model learns some but not all symmetries of the problem (player symmetry but not board symmetry).
 
-| Metric\Model | Chance   | Full model | MLP-only | MLP-only (no LN) |
-| ------------ | -------- | ---------- | -------- | ---------------- |
-| KL (nats)    | 2.475220 | 0.002211   | 0.005847 | 0.009598         |
-| Accuracy     | 13.58%   | 100%       | 100%     | 100%             |
+| Model\Metric     | KL (nats) | Valid accuracy | Top accuracy |
+| ---------------- | --------- | -------------- | ------------ |
+| Chance           | 1.066394  | 13.58%         | 11.25%       |
+| One layer        | 0.004322  | 100%           | 99.46%       |
+| One layer (MLP)  | 0.033210  | 100%           | 98.57%       |
+| Two layers       | 0.006006  | 99.88%         | 99.33%       |
+| Two layers (MLP) | 0.031131  | 99.87%         | 97.53%       |
+
+
+## Runs
+
+- exp21: Baseline
+- exp22: ReLU activations
+- exp23: 2-layer model

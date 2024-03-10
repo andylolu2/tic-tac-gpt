@@ -20,6 +20,18 @@ flags.DEFINE_string("checkpoint", "out/model/exp1", "Checkpoint file")
 flags.DEFINE_integer("step", None, "Step to evaluate")
 
 
+def kl_divergence(p: torch.Tensor, q_logits: torch.Tensor) -> torch.Tensor:
+    return torch.where(
+        (p != 0) & (q_logits == -float("inf")),
+        float("nan"),
+        torch.where(
+            p == 0,
+            0,
+            p * (p.log() - q_logits.log_softmax(dim=-1)),
+        ),
+    ).sum(dim=-1)
+
+
 def main(_):
     checkpoint_dir = Path(FLAGS.checkpoint)
     ds_train = TicTacToeDataset.from_file(FLAGS.train_file)
@@ -44,98 +56,103 @@ def main(_):
         logits_mlp_only = model.unembed(mlp_out)
         return logits, logits_mlp_only  # type: ignore
 
-    def eval_batch(batch):
-        (x,) = batch
-        b, s = x.shape
-
-        logits, logits_mlp_only = forward(x[:, :-1])
-        preds = logits.argmax(dim=-1)
-        preds_mlp_only = logits_mlp_only.argmax(dim=-1)
-
-        def count_valid(x, preds):
-            x = x.cpu().tolist()
-            preds = preds.cpu().tolist()
-            valid_pred = []
-            for x_batch, preds_batch in zip(x, preds):
-                for i in range(1, s):
-                    prefix, next_move = x_batch[1:i], x_batch[i]
-                    if next_move == TicTacToeDataset.pad_token:
-                        continue
-
-                    game_state = TicTacToeState(prefix)
-                    if game_state.result != "in_progress":
-                        valid_moves = {TicTacToeDataset.encode_one(game_state.result)}
-                    else:
-                        valid_moves = set(game_state.next_moves())
-                    valid_pred.append(preds_batch[i - 1] in valid_moves)
-            return torch.tensor(valid_pred)
-
-        metrics.log_dict(
-            {
-                "valid": count_valid(x, preds),
-                "valid_mlp_only": count_valid(x, preds_mlp_only),
-            }
-        )
-
-    def eval_ds(ds):
-        for batch in DataLoader(ds, batch_size=512):
-            eval_batch(batch)
-        logs = metrics.collect("valid", "valid_mlp_only")
-        acc = torch.cat(logs["valid"]).float().mean().item()
-        acc_mlp_only = torch.cat(logs["valid_mlp_only"]).float().mean().item()
-        return acc, acc_mlp_only
-
-    train_acc, train_acc_mlp_only = eval_ds(ds_train)
-    logging.info(
-        "Train accuracy: %.2f%% (MLP only: %.2f%%)",
-        train_acc * 100,
-        train_acc_mlp_only * 100,
-    )
-    test_acc, test_acc_mlp_only = eval_ds(ds_test)
-    logging.info(
-        "Test accuracy: %.2f%% (MLP only: %.2f%%)",
-        test_acc * 100,
-        test_acc_mlp_only * 100,
-    )
-
     opt_model = OptimalModel()
 
-    def kl_div(prefixes, logits):
+    chance_level_logits = torch.tensor(0, dtype=torch.float32)
+    total_weight = 0
+    for prefix in opt_model:
+        probs, weight = opt_model[prefix]
+        chance_level_logits += probs * weight
+        total_weight += weight
+    chance_level_logits /= total_weight
+    chance_level_logits = torch.log(chance_level_logits)
+
+    def eval_batch(prefixes, logits):
         kls = []
+        valid = []
+        accurate = []
         for prefix, logit in zip(prefixes, logits):
-            probs, _ = opt_model[prefix]
-            kls.append(
-                torch.nn.functional.kl_div(
-                    torch.nn.functional.log_softmax(logit, dim=-1),
-                    torch.tensor(probs, dtype=torch.float32, device=logits.device),
-                    reduction="sum",
-                )
-            )
-        return torch.tensor(kls)
+            probs, weight = opt_model[prefix]
+            probs = torch.tensor(probs, dtype=torch.float32)
+            pred = logit.argmax()
+
+            kl = kl_divergence(probs, logit) * (weight / total_weight)
+            is_valid = probs[pred] > 0
+            is_acc = (probs <= probs[pred]).all()
+
+            kls.append(kl)
+            valid.append(is_valid)
+            accurate.append(is_acc)
+
+        return torch.tensor(kls), torch.tensor(valid), torch.tensor(accurate)
 
     for prefixes in batch(opt_model, 4096):
         x = torch.nested.nested_tensor(
             prefixes, dtype=torch.long, device=F.device
         ).to_padded_tensor(TicTacToeDataset.pad_token)
         logits, logits_mlp_only = forward(x)
-        indices = torch.tensor(
-            [len(p) - 1 for p in prefixes], dtype=torch.long, device=F.device
-        )
-        arange = torch.arange(len(prefixes), dtype=torch.long, device=F.device)
+        logits, logits_mlp_only = logits.to("cpu"), logits_mlp_only.to("cpu")
+        indices = torch.tensor([len(p) - 1 for p in prefixes], dtype=torch.long)
+        arange = torch.arange(len(prefixes), dtype=torch.long)
         logits = logits[arange, indices]
         logits_mlp_only = logits_mlp_only[arange, indices]
 
+        kls, valid, accurate = eval_batch(prefixes, logits)
+        kls_mlp_only, valid_mlp_only, accurate_mlp_only = eval_batch(
+            prefixes, logits_mlp_only
+        )
+        kls_chance, valid_chance, accurate_chance = eval_batch(
+            prefixes, torch.tile(chance_level_logits, (len(prefixes), 1))
+        )
         metrics.log_dict(
             {
-                "kl_div": kl_div(prefixes, logits),
-                "kl_div_mlp_only": kl_div(prefixes, logits_mlp_only),
+                "kl_div": kls,
+                "kl_div_mlp_only": kls_mlp_only,
+                "kl_div_chance": kls_chance,
+                "valid": valid,
+                "valid_mlp_only": valid_mlp_only,
+                "valid_chance": valid_chance,
+                "accurate": accurate,
+                "accurate_mlp_only": accurate_mlp_only,
+                "accurate_chance": accurate_chance,
             }
         )
-    logs = metrics.collect("kl_div", "kl_div_mlp_only")
+    logs = metrics.collect(
+        "kl_div",
+        "kl_div_mlp_only",
+        "kl_div_chance",
+        "valid",
+        "valid_mlp_only",
+        "valid_chance",
+        "accurate",
+        "accurate_mlp_only",
+        "accurate_chance",
+    )
     logging.info(
-        "KL divergence: %.6f nats (MLP only: %.6f nats)",
-        torch.cat(logs["kl_div"]).sum().item() / len(opt_model),
-        torch.cat(logs["kl_div_mlp_only"]).sum().item() / len(opt_model),
+        "KL divergence: %.6f nats (MLP only: %.6f nats, chance: %.6f nats)",
+        torch.cat(logs["kl_div"]).sum().item(),
+        torch.cat(logs["kl_div_mlp_only"]).sum().item(),
+        torch.cat(logs["kl_div_chance"]).sum().item(),
+    )
+
+    valid = torch.cat(logs["valid"]).float().mean().item()
+    valid_mlp_only = torch.cat(logs["valid_mlp_only"]).float().mean().item()
+    valid_chance = torch.cat(logs["valid_chance"]).float().mean().item()
+    logging.info(
+        "Valid accuracy: %.2f%% (MLP only: %.2f%%, chance: %.2f%%)",
+        valid * 100,
+        valid_mlp_only * 100,
+        valid_chance * 100,
+    )
+
+    acc = torch.cat(logs["accurate"]).float().mean().item()
+    acc_mlp_only = torch.cat(logs["accurate_mlp_only"]).float().mean().item()
+    acc_chance = torch.cat(logs["accurate_chance"]).float().mean().item()
+    logging.info(
+        "Accurate accuracy: %.2f%% (MLP only: %.2f%%, chance: %.2f%%)",
+        acc * 100,
+        acc_mlp_only * 100,
+        acc_chance * 100,
     )
 
 

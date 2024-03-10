@@ -20,10 +20,15 @@ def main(_):
     with open(out_dir / "games.jsonl", "w") as f:
         for game in TicTacToeState.all_games():
             n_games += 1
-            item = {"seq": game.sequence, "result": game.result}
+            item = {"seq": game.game_sequence, "result": game.result}
             f.write(json.dumps(item) + "\n")
 
     logging.info(f"Generated {n_games} games")
+
+    all_indices = list(range(n_games))
+    if FLAGS.random_split:
+        random.shuffle(all_indices)
+    train_indices = set(all_indices[: int(FLAGS.train_split * n_games)])
 
     with (
         open(out_dir / "games.jsonl", "r") as f,
@@ -31,11 +36,7 @@ def main(_):
         open(out_dir / "test.jsonl", "w") as f_test,
     ):
         for i, line in enumerate(f):
-            if FLAGS.random_split:
-                is_train = random.random() < FLAGS.train_split
-            else:
-                is_train = i < FLAGS.train_split * n_games
-            if is_train:
+            if i in train_indices:
                 f_train.write(line)
             else:
                 f_test.write(line)

@@ -1,0 +1,23 @@
+\begin{table}
+    \caption{A one-layer transformer solves the \ttt task optimally. KL div. is the KL divergence between the optimal distribution and that predicted by the model, averaged across all game sequences. Legal move acc. measures whether the top-predicted move is a legal move, averaged across all \emph{prefixes}. Top move acc. measures whether the top-predicted move is also (one of) the top move(s) under the optimal model, averaged across all prefixes.}
+    \label{table:eval}
+    \centering
+    \begin{tabular}{llll}
+         & KL div. (nats)
+         & Legal move acc. (\%)
+         & Top move acc. (\%)   \\
+        \toprule
+        \ttgpt
+         & \textbf{0.0043}
+         & \textbf{100}
+         & \textbf{99.46}       \\
+        Two-layer transformer
+         & 0.0060
+         & 99.88
+         & 99.33                \\
+        Chance-level
+         & 1.0664
+         & 13.58
+         & 11.25                \\
+    \end{tabular}
+\end{table}
