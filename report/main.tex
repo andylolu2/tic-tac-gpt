@@ -157,13 +157,13 @@ This section covers the necessary background to understand the contributions of 
 To conveniently reason about various components of the transformer \citep{vaswani2017attention}, it is helpful to set up a mathematical description of it \citep{elhage2021mathematical}. While the following description maybe verbose, several simplifications can be made when combined with empirical evidence (\cref{sec:simplify}). The notation will only cover one-layer transformers since that is the main focus of this project.
 
 Let $\m{E} \in \R^{s \times v}$ be the one-hot encoded input tokens and $\m{P} \in \R^{s \times s}$ be the one-hot encoded positional indices, where $s$ is the sequence length and $v$ is the vocabulary size. The embedding layer with learnt positional embeddings can be expressed as:
-\begin{equation*}
+\begin{equation}  \label{eq:embed}
     \text{Embed}(\m{E}) = \m{E} \m{W}_E + \m{P} \m{W}_P
-\end{equation*}
+\end{equation}
 where $\m{W}_E \in \R^{v \times d}$, $\m{W}_P \in \R^{s \times d}$ and $d$ is the hidden dimension of the model.
 
 The core component of the transformer is the attention layer. In this project, we focus on the multi-head, casual, self-attention variant. Each attention head $i$ is parameterised by the query $\m{W}_Q^{(i)} \in \R^{d \times h}$, $\v{b}_Q^{(i)} \in \R^{1 \times h}$, key $\m{W}_K^{(i)} \in \R^{d \times h}$, $\v{b}_K^{(i)} \in \R^{1 \times h}$, value $\m{W}_V^{(i)} \in \R^{d \times h}$, $\v{b}_V^{(i)} \in \R^{1 \times h}$ and output $\m{W}_O^{(i)} \in \R^{h \times d}$, $\v{b}_O^{(i)} \in \R^{1 \times d}$ projections, where $h$ is the head dimension. The attention operator can be expressed as:
-\begin{equation*}
+\begin{equation}  \label{eq:attn}
     \begin{aligned}
         \attn(\m{X})
          & = \sum_i \m{A}^{(i)} (\m{X} \m{W}_V^{(i)} + \v{1}_s \v{b}_V^{(i)}) \m{W}_O^{(i)} + \v{1}_s \v{b}_O^{(i)} \\
@@ -171,11 +171,11 @@ The core component of the transformer is the attention layer. In this project, w
          & = \softmax\left(
         \tril\left(
         \left(\m{X} \m{W}_Q^{(i)} + \v{1}_s \v{b}_Q^{(i)}\right)
-        \left(\m{W}_K^{(i)T} \m{X}^T + \v{b}_K^{(i)T}\v{1}_s^T\right)
+        \left(\m{X} \m{W}_K^{(i)} + \v{1}_s \v{b}_K^{(i)}\right)^T
         , -\infty\right)
         \right)
     \end{aligned}
-\end{equation*}
+\end{equation}
 where $\v{1}_s \in \R^{s \times 1}$ is a vector of ones and $\tril(\m{X}, y)$ fills the upper triangular matrix of $\m{X}$ with $y$. The typical scaling by factor of $1/\sqrt{d}$ in the attention matrix is ignored as it is a linear operation and thus can be folded into the weights.
 
 The other building block is the MLP block which can be expressed as:
@@ -186,13 +186,13 @@ The other building block is the MLP block which can be expressed as:
 \end{equation*}
 where $\m{W}_{in} \in \R^{d \times 4d}$, $\v{b}_{in} \in \R^{1 \times 4d}$, $\m{W}_{out} \in \R^{4d \times d}$, $\v{b}_{out} \in \R^{1 \times d}$ and $\phi$ is an elementwise non-linearity.
 
-Putting everything together, the entire transformer $f(\m{E}) \in \R^{s \times v} \to \R^{s \times v}$ can be expressed as:
+Putting everything together, the transformer output $\m{Y} \in \R^{s \times v}$ can be expressed as:
 \begin{equation*}
     \begin{aligned}
-        \m{H}_0  & = \text{Embed}(\m{E})                       \\
-        \m{H}_1  & = \m{H}_0 + \attn(\layernorm(\m{H}_0))      \\
-        \m{H}_2  & = \m{H}_1 + \text{MLP}(\layernorm(\m{H}_1)) \\
-        f(\m{E}) & = \layernorm(\m{H_2}) \m{W}_U
+        \m{H}_0 & = \text{Embed}(\m{E})                       \\
+        \m{H}_1 & = \m{H}_0 + \attn(\layernorm(\m{H}_0))      \\
+        \m{H}_2 & = \m{H}_1 + \text{MLP}(\layernorm(\m{H}_1)) \\
+        \m{Y}   & = \layernorm(\m{H_2}) \m{W}_U
     \end{aligned}
 \end{equation*}
 where $\m{W}_U \in \R^{d \times v}$ and $\layernorm(\m{X})$ represents a LayerNorm which normalises $\m{X}$ column-wise by subtracting the mean and dividing by the standard deviation. The scale and bias parameters of LayerNorm is ignored as they can be folded into the linear projections that proceed them.
@@ -226,6 +226,28 @@ This section lays down and provides empirical evidence to several appealing prop
 The first observation is that a one-layer transformer is sufficient to solve the task almost optimally. One of the advantages of working with a toy problem like \ttt is that the optimal policy can be computed exactly, by enumerating all game sequences. This makes evaluation much simpler as we can directly compare the trained models to the optimal model. \cref{table:eval} shows such comparisons for \ttgpt, a two-layer counterpart\footnote{The two-layer model uses the same hyperparameters, except having two layers and is trained with a lower weight decay of 0.03 (as it failed to converge with weight decay 0.1).} and a baseline constant output model. \ttgpt achieves much better performance than random, and approaches 100\% accuracy on other classification metrics. Surprisingly, it even outperforms the two-layer transformer which may be attributed to reduced overfitting. I thereby conclude that \ttgpt solves \ttt and thus the investigation of \emph{``How does a sequence model solve \ttt?''} can be limited to \emph{``How does \ttgpt solve \ttt?''}.
 
 \subsubsection{Attention is only a function of position}
+
+\input{figures/attention.tex}
+
+The second observation is that the model appears to have learnt attention patterns that is independent of the input sequence. From the example attention map in \cref{fig:attn-pattern}, we see that both attention heads use checkerboard-like attention patterns. Heuristically, it appears that \texttt{Head0} is performing ``attend to all moves played by the opponent'' and \texttt{Head1} is doing the same but for the current player. Since the player order in \ttt is always the same (alternates between \texttt{X} and \texttt{O}), it is very likely that the attention pattern is derived from positional information alone.
+
+To confirm the above intuition analytically, I perform sensitivity analysis of the attention pattern to identify which inputs have the most affect. To do so, I study a function $a^{(i)}$ that calculates the unnormalised attention paid by token $t_1$ at position $p_1$ on another token $t_2$ at position $p_2$, for attention head $i$. This can be done by unfolding the embedding and attention calculation as described by \cref{eq:embed,eq:attn}, giving the following definition:
+\begin{equation*}
+    \begin{aligned}
+        a^{(i)}(t_1, p_1, t_2, p_2)
+         & =\begin{cases}
+                \left(\v{x}_1 \m{W}_Q^{(i)} + \v{b}_Q^{(i)}\right)
+                \left(\v{x}_2 \m{W}_K^{(i)} + \v{b}_K^{(i)}\right)^T
+                  & \text{if }p_1 \leq p_2, \\
+                0 & \text{otherwise.}
+            \end{cases} \\
+        \v{x}_1
+         & = \layernorm((\m{W}_E)_{t_1} + (\m{W}_P)_{p_1})^T    \\
+        \v{x}_2
+         & = \layernorm((\m{W}_E)_{t_2} + (\m{W}_P)_{p_2})^T
+    \end{aligned}
+\end{equation*}
+Treating $t_1, p_1, t_2, p_2$ as independent, uniformly distributed random variables, one can decompose the variance of $a^{(i)}$ into those explained by first-order terms (i.e. each input individually), second-order terms (i.e. interactions between pairs of inputs) and higher-order terms using Sobol's method \citep{sobol1993sensitivity,sobol2001global}. As shown in \cref{fig:attn-sobol}, nearly all of the variance can be explained by second-order interactions between $p_1$ and $p_2$. This matches our intuition since checkerboard attention patterns requires second-order interaction yet is purely positional. I thus conclude that \ttgpt uses attention patterns that are input-independent and hence \emph{the attention matrices $\m{A}^{(0)}, \m{A}^{(1)}$ are constants}.
 
 \subsubsection{Output is only a function of MLP activations}
 
