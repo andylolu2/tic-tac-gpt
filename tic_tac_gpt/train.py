@@ -52,8 +52,10 @@ def main(_):
     for mn, m in model.named_modules():
         for pn, p in m.named_parameters():
             if "embed" in mn or "embed" in pn or pn.split(".")[-1].startswith("b"):
+                print("No decay", mn, pn)
                 no_decay.add(p)
             elif pn.split(".")[-1].lower().startswith("w"):
+                print("Decay", mn, pn)
                 decay.add(p)
             else:
                 raise ValueError(f"Unknown parameter type {type(p)}")

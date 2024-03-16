@@ -87,9 +87,9 @@ L1:
 
 `[D]`: 135/244
 
-| Position | 0   | 1   | 2   | 3   | 4       | 5       | 6   | 7   | 8   |
-| -------- | --- | --- | --- | --- | ------- | ------- | --- | --- | --- |
-|          | 319 | 455 | 342 | 62  | 323/505 | 110/349 | 433 | 277 | 83  |
+| Position | 0   | 1   | 2   | 3   | 4          | 5   | 6   | 7   | 8   |
+| -------- | --- | --- | --- | --- | ---------- | --- | --- | --- | --- |
+|          | 319 | 455 | 342 | 62  | 94/323/505 | 110 | 433 | 277 | 83  |
 
 
 ## Claims
@@ -98,13 +98,14 @@ L1:
 - The output logits are solely a function of the MLP outputs.
 - The model learns some but not all symmetries of the problem (player symmetry but not board symmetry).
 
-| Model\Metric     | KL (nats) | Valid accuracy | Top accuracy |
-| ---------------- | --------- | -------------- | ------------ |
-| Chance           | 1.066394  | 13.58%         | 11.25%       |
-| One layer        | 0.004322  | 100%           | 99.46%       |
-| One layer (MLP)  | 0.033210  | 100%           | 98.57%       |
-| Two layers       | 0.006006  | 99.88%         | 99.33%       |
-| Two layers (MLP) | 0.031131  | 99.87%         | 97.53%       |
+| Model\Metric          | KL (nats) | Valid accuracy | Top accuracy |
+| --------------------- | --------- | -------------- | ------------ |
+| Chance                | 1.066394  | 13.58%         | 11.25%       |
+| One layer             | 0.004171  | 100%           | 99.56%       |
+| One layer (MLP)       | 0.010466  | 100%           | 98.73%       |
+| One layer (MLP no LN) | 0.020907  | 100%           | 98.74%       |
+| Two layers            | 0.006006  | 99.88%         | 99.33%       |
+| Two layers (MLP)      | 0.031131  | 99.87%         | 97.53%       |
 
 
 ## Runs
@@ -112,3 +113,4 @@ L1:
 - exp21: Baseline
 - exp22: ReLU activations
 - exp23: 2-layer model
+- exp24: Rerun of baseline, with new data split

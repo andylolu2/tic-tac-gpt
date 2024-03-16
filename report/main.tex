@@ -189,13 +189,13 @@ where $\m{W}_{in} \in \R^{d \times 4d}$, $\v{b}_{in} \in \R^{1 \times 4d}$, $\m{
 Putting everything together, the transformer output $\m{Y} \in \R^{s \times v}$ can be expressed as:
 \begin{equation*}
     \begin{aligned}
-        \m{H}_0 & = \text{Embed}(\m{E})                       \\
-        \m{H}_1 & = \m{H}_0 + \attn(\layernorm(\m{H}_0))      \\
-        \m{H}_2 & = \m{H}_1 + \text{MLP}(\layernorm(\m{H}_1)) \\
-        \m{Y}   & = \layernorm(\m{H_2}) \m{W}_U
+        \m{H}_0 & = \text{Embed}(\m{E})                           \\
+        \m{H}_1 & = \m{H}_0 + \attn(\layernorm(\m{H}_0))          \\
+        \m{H}_2 & = \m{H}_1 + \text{MLP}(\layernorm(\m{H}_1))     \\
+        \m{Y}   & = \layernorm(\m{H_2}) \m{W}_U + \v{1}_s \v{b}_U
     \end{aligned}
 \end{equation*}
-where $\m{W}_U \in \R^{d \times v}$ and $\layernorm(\m{X})$ represents a LayerNorm which normalises $\m{X}$ column-wise by subtracting the mean and dividing by the standard deviation. The scale and bias parameters of LayerNorm is ignored as they can be folded into the linear projections that proceed them.
+where $\m{W}_U \in \R^{d \times v}$, $\v{b}_U \in \R ^{1 \times v}$ and $\layernorm(\m{X})$ represents a LayerNorm which normalises $\m{X}$ column-wise by subtracting the mean and dividing by the standard deviation. The scale and bias parameters of LayerNorm is ignored as they can be folded into the linear projections that proceed them.
 
 \section{\ttgpt}
 
@@ -207,49 +207,73 @@ Following \cite{orthello-gpt}, each game is represented as the sequence of moves
 
 One might naively think that the task only involves learning what moves are legal and deciding the final outcome of the game. However, there are nuances to the training objective. Since the model is trained on all possible game sequences, the true task is to learn the proportion of possible continuations for each possible next move. For example, the optimal model should assign lower probability to immediately winning moves (one that creates a three-in-a-row) as there is only one continuation (either ``\texttt{X} wins'' or ``\texttt{O} wins'') while non-winning moves have more possible continuations. As shown later, the trained model captures such complexities of the task as well.
 
-\subsection{Experiment details}
+\subsection{Model and experiment details}
 
 The training of \ttgpt mostly follows standard practices \citep{radford2019language} for typical prefix \ac{LLMs}. \ttgpt is a one-layer transformer with 128 hidden dimensions, 2 attention heads, 512 MLP dimensions, learnt positional encodings and uses the pre-norm architecture \citep{xiong2020layer}. The only non-standard architectural choice is the use of the Softmax Linear Units ($\solu$) \citep{elhage2022solu} activation function in the MLP. It is defined as:
 \begin{equation*}
     \solu(\m{X}) = \layernorm(\m{X} \cdot \softmax(\m{X}))
 \end{equation*}
-\citet{elhage2022solu} demonstrated that $\solu$ increases the interpretability of MLP neurons such as by reducing polysemanticity\footnote{Polysemanticity is the phenomenon where neurons respond to multiple unrelated inputs.}\citep{olah2020zoom} while having negligible impact on performance. Empirically I found that models trained with $\solu$ produced slightly `cleaner' activation patterns than standard choices like $\text{GeLU}$ though the effect is not substantial. The model is trained for 40000 steps with batch size 512 and the AdamW optimizer \citep{loshchilov2017decoupled} with learning rate $0.0003$, $\beta_1 = 0.9$, $\beta_2 = 0.999$ and weight decay $0.1$ on non-bias and non-embedding parameters.
+\citet{elhage2022solu} demonstrated that $\solu$ increases the interpretability of MLP neurons such as by reducing polysemanticity\footnote{Polysemanticity is the phenomenon where neurons respond to multiple unrelated inputs.}\citep{olah2020zoom} while having negligible impact on performance. Empirically I found that models trained with $\solu$ produced slightly ``cleaner'' activation patterns than standard choices like $\text{GeLU}$ though the effect is not substantial. The model is trained for 40000 steps with batch size 512 using the AdamW optimizer \citep{loshchilov2017decoupled} with learning rate $0.0003$, $\beta_1 = 0.9$, $\beta_2 = 0.999$ and weight decay $0.1$ on non-bias and non-embedding parameters.
 
-\subsection{Three simplifying assumptions} \label{sec:simplify}
+\section{Three simplifying properties} \label{sec:simplify}
 
 \input{figures/eval_table.tex}
 
 This section lays down and provides empirical evidence to several appealing properties of the trained model that make it particularly friendly to mechanistic analysis. The remainder of this report will base its argument on such simplifications.
 
-\subsubsection{\ttgpt solves \ttt}
+\subsection{\ttgpt solves \ttt}
 
-The first observation is that a one-layer transformer is sufficient to solve the task almost optimally. One of the advantages of working with a toy problem like \ttt is that the optimal policy can be computed exactly, by enumerating all game sequences. This makes evaluation much simpler as we can directly compare the trained models to the optimal model. \cref{table:eval} shows such comparisons for \ttgpt, a two-layer counterpart\footnote{The two-layer model uses the same hyperparameters, except having two layers and is trained with a lower weight decay of 0.03 (as it failed to converge with weight decay 0.1).} and a baseline constant output model. \ttgpt achieves much better performance than random, and approaches 100\% accuracy on other classification metrics. Surprisingly, it even outperforms the two-layer transformer which may be attributed to reduced overfitting. I thereby conclude that \ttgpt solves \ttt and thus the investigation of \emph{``How does a sequence model solve \ttt?''} can be limited to \emph{``How does \ttgpt solve \ttt?''}.
+The first observation is that a one-layer transformer is sufficient to solve the task almost optimally. One of the advantages of working with a toy problem like \ttt is that the optimal policy can be computed exactly, by enumerating all game sequences. This makes evaluation much simpler as we can directly compare the trained models to the optimal model. \cref{table:eval} shows such comparisons with the optimal model for \ttgpt, a two-layer counterpart\footnote{The two-layer model uses the same hyperparameters, except having two layers and is trained with a lower weight decay of 0.03 (as it failed to converge with weight decay 0.1).} and a baseline constant output model. \ttgpt achieves much better performance than random and approaches 100\% accuracy on other classification metrics. Surprisingly, it even outperforms the two-layer transformer which may be attributed to reduced overfitting. I thereby conclude that \ttgpt solves \ttt and thus the investigation of \emph{``How does a sequence model solve \ttt?''} can be limited to \emph{``How does \ttgpt solve \ttt?''}.
 
-\subsubsection{Attention is only a function of position}
+\subsection{Attention is only a function of position}
 
 \input{figures/attention.tex}
 
 The second observation is that the model appears to have learnt attention patterns that is independent of the input sequence. From the example attention map in \cref{fig:attn-pattern}, we see that both attention heads use checkerboard-like attention patterns. Heuristically, it appears that \texttt{Head0} is performing ``attend to all moves played by the opponent'' and \texttt{Head1} is doing the same but for the current player. Since the player order in \ttt is always the same (alternates between \texttt{X} and \texttt{O}), it is very likely that the attention pattern is derived from positional information alone.
 
-To confirm the above intuition analytically, I perform sensitivity analysis of the attention pattern to identify which inputs have the most affect. To do so, I study a function $a^{(i)}$ that calculates the unnormalised attention paid by token $t_1$ at position $p_1$ on another token $t_2$ at position $p_2$, for attention head $i$. This can be done by unfolding the embedding and attention calculation as described by \cref{eq:embed,eq:attn}, giving the following definition:
+To confirm the above intuition analytically, I perform sensitivity analysis of the attention pattern to identify which inputs have the most affect. To do so, I study a function $a^{(i)}$ that calculates the unnormalised attention paid by token $t_q$ at position $p_q$ on another token $t_k$ at position $p_k$, for attention head $i$. This can be done by unfolding the embedding and attention calculation as described by \cref{eq:embed,eq:attn}, giving the following definition:
 \begin{equation*}
     \begin{aligned}
-        a^{(i)}(t_1, p_1, t_2, p_2)
+        a^{(i)}(t_q, p_q, t_k, p_k)
          & =\begin{cases}
-                \left(\v{x}_1 \m{W}_Q^{(i)} + \v{b}_Q^{(i)}\right)
-                \left(\v{x}_2 \m{W}_K^{(i)} + \v{b}_K^{(i)}\right)^T
-                  & \text{if }p_1 \leq p_2, \\
+                \left(\v{x}_q \m{W}_Q^{(i)} + \v{b}_Q^{(i)}\right)
+                \left(\v{x}_k \m{W}_K^{(i)} + \v{b}_K^{(i)}\right)^T
+                  & \text{if }p_k \leq p_q, \\
                 0 & \text{otherwise.}
             \end{cases} \\
-        \v{x}_1
-         & = \layernorm((\m{W}_E)_{t_1} + (\m{W}_P)_{p_1})^T    \\
-        \v{x}_2
-         & = \layernorm((\m{W}_E)_{t_2} + (\m{W}_P)_{p_2})^T
+        \v{x}_q
+         & = \layernorm((\m{W}_E)_{t_q} + (\m{W}_P)_{p_q})^T    \\
+        \v{x}_k
+         & = \layernorm((\m{W}_E)_{t_k} + (\m{W}_P)_{p_k})^T
     \end{aligned}
 \end{equation*}
-Treating $t_1, p_1, t_2, p_2$ as independent, uniformly distributed random variables, one can decompose the variance of $a^{(i)}$ into those explained by first-order terms (i.e. each input individually), second-order terms (i.e. interactions between pairs of inputs) and higher-order terms using Sobol's method \citep{sobol1993sensitivity,sobol2001global}. As shown in \cref{fig:attn-sobol}, nearly all of the variance can be explained by second-order interactions between $p_1$ and $p_2$. This matches our intuition since checkerboard attention patterns requires second-order interaction yet is purely positional. I thus conclude that \ttgpt uses attention patterns that are input-independent and hence \emph{the attention matrices $\m{A}^{(0)}, \m{A}^{(1)}$ are constants}.
+Treating $t_q, p_q, t_k, p_k$ as independent, uniformly distributed random variables, one can decompose the variance of $a^{(i)}$ into those explained by first-order terms (i.e. each input individually), second-order terms (i.e. interactions between pairs of inputs) and higher-order terms using Sobol's method \citep{sobol1993sensitivity,sobol2001global}. As shown in \cref{fig:attn-sobol}, nearly all of the variance can be explained by second-order interactions between $p_1$ and $p_2$. This matches our intuition since checkerboard attention patterns requires second-order interactions yet are purely positional. Thus, \ttgpt uses attention patterns that are input-independent and so \emph{the attention matrices $\m{A}^{(0)}, \m{A}^{(1)}$ are constants}.
 
-\subsubsection{Output is only a function of MLP activations}
+\todo{Maybe characterise what the attention does here?}
+
+\subsection{Output is only a function of MLP activations}
+
+The last observation is that the skip connection around the MLP layer has minimal effect on the output logits, and thus can be ignored in our subsequent analysis. This property can be shown empirically by artificially removing the skip connection during inference (i.e. setting $\m{H}_2 = \text{MLP}(\layernorm(\m{H}_1))$) and studying its effects on the performance of the model. The comparison shown in \cref{table:eval} confirms such assertion, as the top move accuracy of the modified network only drops by $0.83\%$ and remains significantly better than chance.
+
+The insignificance of the MLP skip connection means that we can narrow down the analysis to the MLP activations only. If we can understand how the MLP neurons respond to inputs and their corresponding effects on the output logits, we can explain most of the behaviour of \ttgpt.
+
+\section{Zooming in: MLP neurons}
+
+Given the simplifications from \cref{sec:simplify}, this section dives into the two circuits around the MLP layer that define the model's behaviour: The ``input circuit'' --- how do the MLP neurons respond to inputs, and the ``output circuit'' -- how do the activated neurons affect the output logits. The analysis will be done in two steps. Firstly, \cref{sec:neurons-that-matter} identifies the neurons that contribute the most to the model's performance. In the process, I discover that most of the behaviour can be explained by a small subset of neurons. Then, \cref{sec:neurons-visualisation} characterises the role of each of such neuron on the behaviour of the model.
+
+\subsection{Neurons that matter} \label{sec:neurons-that-matter}
+
+\input{figures/neurons_importance.tex}
+
+\ttgpt has 512 MLP neurons, which even in this toy problem is too many to be human comprehensible. To proceed, it is necessary to narrow down the number of MLP neurons for in-depth analysis.
+
+However, identifying which neurons are the most ``important'' is non-trivial task. A naive approach might measure how often a neuron is ``active'' (e.g., larger than some threshold) across a diverse sample of game sequences. Unfortunately, this neglects the importance of neurons that only fire in response to particular inputs yet has a strong influence on the output logits. Another method might be to identify the neurons with the largest output logits influence by linearising the output circuit $(\m{W}_{out} + \v{1}_s \v{b}_{out}) \m{W_U}$. This however assumes each neuron fires with equal probability and equal magnitude, which is not guaranteed. For example, some neurons might never fire at all yet appear to have a large effect according to the output circuit.
+
+Instead, I propose to take an empirical approach to measure neuron importance. To measure the significance of neuron $n$, I evaluate the performance of a patched version of \ttgpt where neuron $n$ is removed entirely. Concretely, the importance of a neuron is given by the increase in KL divergence from the optimal model of the patched model verses the original model, evaluated on a sample of 1024 games. The method is inspired by activation patching \citep{meng2022locating,vig2020investigating} which is commonly used for identifying core components of a network.
+
+\cref{fig:neuron-importance} shows that only about $10\%$ of the neurons have a significant impact on the model's performance. Speculatively, this might be attributed to the use of SoLU non-linearity which promotes sparse activations. The use of weight decay might contribute to this phenomenon as well. \todo{Add an experiment that measures the performance without all other neurons?}
+
+\subsection{Visualising the neurons} \label{sec:neurons-visualisation}
 
 \bibliography{references}
 
