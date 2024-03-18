@@ -156,9 +156,9 @@ This section covers the necessary background to understand the contributions of 
 
 To conveniently reason about various components of the transformer \citep{vaswani2017attention}, it is helpful to set up a mathematical description of it \citep{elhage2021mathematical}. While the following description maybe verbose, several simplifications can be made when combined with empirical evidence (\cref{sec:simplify}). The notation will only cover one-layer transformers since that is the main focus of this project.
 
-Let $\m{E} \in \R^{s \times v}$ be the one-hot encoded input tokens and $\m{P} \in \R^{s \times s}$ be the one-hot encoded positional indices, where $s$ is the sequence length and $v$ is the vocabulary size. The embedding layer with learnt positional embeddings can be expressed as:
+Let $\m{E} \in \R^{s \times v}$ be the one-hot encoded input tokens, where $s$ is the sequence length and $v$ is the vocabulary size. The embedding layer with learnt positional embeddings can be expressed as:
 \begin{equation}  \label{eq:embed}
-    \text{Embed}(\m{E}) = \m{E} \m{W}_E + \m{P} \m{W}_P
+    \text{Embed}(\m{E}) = \m{E} \m{W}_E + \m{W}_P
 \end{equation}
 where $\m{W}_E \in \R^{v \times d}$, $\m{W}_P \in \R^{s \times d}$ and $d$ is the hidden dimension of the model.
 
@@ -187,14 +187,14 @@ The other building block is the MLP block which can be expressed as:
 where $\m{W}_{in} \in \R^{d \times 4d}$, $\v{b}_{in} \in \R^{1 \times 4d}$, $\m{W}_{out} \in \R^{4d \times d}$, $\v{b}_{out} \in \R^{1 \times d}$ and $\phi$ is an elementwise non-linearity.
 
 Putting everything together, the transformer output $\m{Y} \in \R^{s \times v}$ can be expressed as:
-\begin{equation*}
+\begin{equation}  \label{eq:transformer}
     \begin{aligned}
         \m{H}_0 & = \text{Embed}(\m{E})                           \\
         \m{H}_1 & = \m{H}_0 + \attn(\layernorm(\m{H}_0))          \\
         \m{H}_2 & = \m{H}_1 + \text{MLP}(\layernorm(\m{H}_1))     \\
         \m{Y}   & = \layernorm(\m{H_2}) \m{W}_U + \v{1}_s \v{b}_U
     \end{aligned}
-\end{equation*}
+\end{equation}
 where $\m{W}_U \in \R^{d \times v}$, $\v{b}_U \in \R ^{1 \times v}$ and $\layernorm(\m{X})$ represents a LayerNorm which normalises $\m{X}$ column-wise by subtracting the mean and dividing by the standard deviation. The scale and bias parameters of LayerNorm is ignored as they can be folded into the linear projections that proceed them.
 
 \section{\ttgpt}
@@ -225,7 +225,7 @@ This section lays down and provides empirical evidence to several appealing prop
 
 The first observation is that a one-layer transformer is sufficient to solve the task almost optimally. One of the advantages of working with a toy problem like \ttt is that the optimal policy can be computed exactly, by enumerating all game sequences. This makes evaluation much simpler as we can directly compare the trained models to the optimal model. \cref{table:eval} shows such comparisons with the optimal model for \ttgpt, a two-layer counterpart\footnote{The two-layer model uses the same hyperparameters, except having two layers and is trained with a lower weight decay of 0.03 (as it failed to converge with weight decay 0.1).} and a baseline constant output model. \ttgpt achieves much better performance than random and approaches 100\% accuracy on other classification metrics. Surprisingly, it even outperforms the two-layer transformer which may be attributed to reduced overfitting. I thereby conclude that \ttgpt solves \ttt and thus the investigation of \emph{``How does a sequence model solve \ttt?''} can be limited to \emph{``How does \ttgpt solve \ttt?''}.
 
-\subsection{Attention is only a function of position}
+\subsection{Attention is only a function of position} \label{sec:simplify-attn}
 
 \input{figures/attention.tex}
 
@@ -251,7 +251,7 @@ Treating $t_q, p_q, t_k, p_k$ as independent, uniformly distributed random varia
 
 \todo{Maybe characterise what the attention does here?}
 
-\subsection{Output is only a function of MLP activations}
+\subsection{Output is only a function of MLP activations} \label{sec:simplify-output}
 
 The last observation is that the skip connection around the MLP layer has minimal effect on the output logits, and thus can be ignored in our subsequent analysis. This property can be shown empirically by artificially removing the skip connection during inference (i.e. setting $\m{H}_2 = \text{MLP}(\layernorm(\m{H}_1))$) and studying its effects on the performance of the model. The comparison shown in \cref{table:eval} confirms such assertion, as the top move accuracy of the modified network only drops by $0.83\%$ and remains significantly better than chance.
 
@@ -269,11 +269,76 @@ Given the simplifications from \cref{sec:simplify}, this section dives into the 
 
 However, identifying which neurons are the most ``important'' is non-trivial task. A naive approach might measure how often a neuron is ``active'' (e.g., larger than some threshold) across a diverse sample of game sequences. Unfortunately, this neglects the importance of neurons that only fire in response to particular inputs yet has a strong influence on the output logits. Another method might be to identify the neurons with the largest output logits influence by linearising the output circuit $(\m{W}_{out} + \v{1}_s \v{b}_{out}) \m{W_U}$. This however assumes each neuron fires with equal probability and equal magnitude, which is not guaranteed. For example, some neurons might never fire at all yet appear to have a large effect according to the output circuit.
 
-Instead, I propose to take an empirical approach to measure neuron importance. To measure the significance of neuron $n$, I evaluate the performance of a patched version of \ttgpt where neuron $n$ is removed entirely. Concretely, the importance of a neuron is given by the increase in KL divergence from the optimal model of the patched model verses the original model, evaluated on a sample of 1024 games. The method is inspired by activation patching \citep{meng2022locating,vig2020investigating} which is commonly used for identifying core components of a network.
+Instead, I propose to take an empirical approach to measure neuron importance. To measure the significance of neuron $n$, I evaluate the performance of a patched version of \ttgpt where neuron $n$ is removed entirely. Concretely, the importance of a neuron is given by the increase in KL divergence from the optimal model of the patched model verses the original model, evaluated on a sample of 4096 games. The method is inspired by activation patching \citep{meng2022locating,vig2020investigating} which is commonly used to identify core components of a network.
 
-\cref{fig:neuron-importance} shows that only about $10\%$ of the neurons have a significant impact on the model's performance. Speculatively, this might be attributed to the use of SoLU non-linearity which promotes sparse activations. The use of weight decay might contribute to this phenomenon as well. \todo{Add an experiment that measures the performance without all other neurons?}
+\cref{fig:neuron-importance} shows that only a small proportion of neurons have a significant impact on the model's performance. Speculatively, this might be attributed to the use of SoLU non-linearity and weight decay which promotes sparse activations. To further quantify how many neurons can be ignored while still capturing most of the model's behaviour, I evaluate pruned versions of \ttgpt where $n\%$ of the least important neurons are removed. The results in \cref{fig:neuron-pruning} reveals that nearly all of the performance can be recovered from only 30\% of the neurons.
 
-\subsection{Visualising the neurons} \label{sec:neurons-visualisation}
+Interestingly, \cref{fig:neuron-importance} suggests that there are
+approximately $30\%$ of neurons that \emph{negatively} impacts the model's performance. I believe this is due to estimation error from only using a subset of games, since from pruning such neurons does not actually result in improved performance as shown in \cref{fig:neuron-pruning}.
+
+\subsection{Understanding the neurons} \label{sec:neurons-visualisation}
+
+Given the core neurons identified in \cref{sec:neurons-that-matter}, we proceed to analyse each neuron's role in the model.
+
+\subsubsection{Input circuits}
+
+In order to conceptualise the ``rule'' implemented by each neuron, we must first understand under what situations do the neuron activate, i.e. the input circuit. To simplify the following analysis, I ignore LayerNorm operations which I argue to have minimal effect on the analysis since it only applies affine transformations. Referring to \cref{eq:transformer,eq:attn}, the input to the MLP non-linearity is given by:
+\begin{equation*}
+    \begin{aligned}
+        \m{X} & = \m{H}_1 \m{W}_{in} + \v{1}_s \v{b}_{in} \\
+              & = \left(
+        \m{H_0}
+        + \sum_{i=0}^1 \m{A}^{(i)} (
+        \m{H}_0 \m{W}_V^{(i)} + \v{1}_s \v{b}_V^{(i)}
+        ) \m{W}_O^{(i)} + \v{1}_s \v{b}_O^{(i)}
+        \right) \m{W}_{in} + \v{1}_s \v{b}_{in}           \\
+              & = \m{H}_0 \m{W}_{in}
+        + \m{A}^{(0)} (\m{H}_0 \m{W}_V^{(0)} \m{W}_O^{(0)} \m{W}_{in})
+        + \m{A}^{(1)} (\m{H}_0 \m{W}_V^{(1)} \m{W}_O^{(1)} \m{W}_{in})
+        + \v{1}_s \v{b}                                   \\
+    \end{aligned}
+\end{equation*}
+where $\v{b} = \v{b}_{in} + \sum_{i=0}^{1} \v{b}_V^{(i)} \m{W}_O^{(i)} \m{W}_{in} + \v{b}_O^{(i)} \m{W}_{in}$. Factoring the bias terms out is possible since each row of the attention matrices always sum to one.
+
+Furthermore, we have $\m{H}_0 = \m{E} \m{W}_E + \m{W}_P$ (\cref{eq:embed}). Since the attention matrices are constants (\cref{sec:simplify-attn}), we can rewrite the above as a sum of one position-dependent term and three data-dependent terms (plus a constant):
+\begin{equation} \label{eq:four-circuits}
+    \m{X} =
+    \m{W}_p
+    + \m{E} \m{W}_e
+    + \m{A}^{(0)} \m{E} \m{W}_{h_0}
+    + \m{A}^{(1)} \m{E} \m{W}_{h_1}
+    + \v{1}_s \v{b}
+\end{equation}
+where:
+\begin{equation*}
+    \begin{aligned}
+        \m{W}_p
+         & = \left(\m{W}_P
+        + \m{A}_0 \m{W}_P \m{W}_V^{(0)} \m{W}_O^{(0)}
+        + \m{A}_1 \m{W}_P \m{W}_V^{(1)} \m{W}_O^{(1)}
+        \right) \m{W}_{in}                                  \\
+        \m{W}_e
+         & = \m{W}_E \m{W}_{in}                             \\
+        \m{W}_{h_0}
+         & = \m{W}_E \m{W}_V^{(0)} \m{W}_O^{(0)} \m{W}_{in} \\
+        \m{W}_{h_1}
+         & = \m{W}_E \m{W}_V^{(1)} \m{W}_O^{(1)} \m{W}_{in}
+    \end{aligned}
+\end{equation*}
+
+Decomposing the pre-activations into circuits are useful as they each have an interpretable meaning. Referring to \cref{eq:four-circuits}, the $\m{W}_p$ circuit encapsulates all positional information, thus it captures how the neurons react to the current turn number. The $\m{W}_e$ circuit only involves position-wise operators, thus it measures how the current move affect the neurons. The $\m{W}_{h_0}$ circuits trace how inputs at other positions affect each neuron via attention \texttt{Head0}. From \cref{sec:simplify-attn}, attention \texttt{Head0} roughly serves the purpose of ``attend to the opponent's moves so far'' and thus we may interpret the $\m{W}_{h_0}$ circuits as measuring ``how do the opponent's moves affect each neuron?''. Similarly, attention \texttt{Head1} approximately attends to the current player's moves so far, and so the $\m{W}_{h_1}$ circuits measure ``how do my moves so far affect each neuron?''.
+
+\subsubsection{Output circuit}
+
+The output circuit is considerably simpler since \cref{sec:simplify-output} has established that only the direct contributions from the MLP layer matter. Ignoring LayerNorm, each neuron's effect on the output logits is given by $\m{W}_{out} \m{W}_U$.
+
+\subsubsection{Visualisation}
+
+\input{figures/neuron_sample.tex}
+
+For each neuron, the data-dependent input circuits $\m{W}_e$, $\m{W}_{h_0}$ and $\m{W}_{h_1}$ each give a scalar for how much a neuron reacts to a given move on the board. Such values are best visualised as a 3x3 grids. The output logits is composed of two components: The move logits and the special token logits. Since they conceptually represent different quantities, they are plotted separately. An example visualising the 508\textsuperscript{th} neuron (denoted as \texttt{N508}) is shown in \cref{fig:neuron-sample}. The visualisation strategy is successful as it is immediately clear what this neuron is performing: It identifies three-in-a-rows down in the middle column for player \texttt{O}.
+
+\newpage
 
 \bibliography{references}
 

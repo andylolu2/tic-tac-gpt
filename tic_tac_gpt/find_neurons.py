@@ -43,18 +43,18 @@ def main(_):
     model.eval()
 
     ds = TicTacToeDataset.from_file(Path("out/dataset/50_50_even/games.jsonl"))
-    games = ds[torch.randperm(len(ds))[:4096]][0]
+    games = ds[torch.randperm(len(ds))[:8192]][0]
     logits = model(games)
 
     opt_model = OptimalModel()
 
     def measure_neuron_effect(neuron: int):
         def neuron_hook(value, hook):
-            value[:, :, neuron] = 0
+            value[:, :, neuron] -= 100
             return value
 
         patched_logits = model.run_with_hooks(
-            games, fwd_hooks=[(utils.get_act_name("mlp_mid", 0), neuron_hook)]
+            games, fwd_hooks=[(utils.get_act_name("mlp_pre", 0), neuron_hook)]
         )
 
         loss_diffs = []

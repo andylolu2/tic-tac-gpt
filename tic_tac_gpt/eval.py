@@ -1,12 +1,17 @@
+import json
 import pickle
+from functools import partial
 from pathlib import Path
 
+import numpy as np
 import torch
 from absl import app, flags, logging
 from lightning import fabric
 from ml_tools.itertools_ import batch
 from ml_tools.metrics import metrics
-from transformer_lens import HookedTransformer, HookedTransformerConfig
+from scipy.special import rel_entr
+from tqdm import tqdm
+from transformer_lens import HookedTransformer, HookedTransformerConfig, utils
 
 from tic_tac_gpt.data import TicTacToeDataset
 from tic_tac_gpt.model.optimal_model import OptimalModel
@@ -14,6 +19,7 @@ from tic_tac_gpt.model.optimal_model import OptimalModel
 FLAGS = flags.FLAGS
 flags.DEFINE_string("checkpoint", "out/model/exp1", "Checkpoint file")
 flags.DEFINE_integer("step", None, "Step to evaluate")
+flags.DEFINE_multi_float("prune_percent", [], "Percentage of neurons to prune")
 
 
 def normalize(x, dim=-1):
@@ -22,16 +28,53 @@ def normalize(x, dim=-1):
     return x / scale
 
 
-def kl_divergence(p: torch.Tensor, q_logits: torch.Tensor) -> torch.Tensor:
-    return torch.where(
-        (p != 0) & (q_logits == -float("inf")),
-        float("nan"),
-        torch.where(
-            p == 0,
-            0,
-            p * (p.log() - q_logits.log_softmax(dim=-1)),
-        ),
-    ).sum(dim=-1)
+def kl_divergence(p: np.ndarray, q: np.ndarray) -> np.ndarray:
+    return rel_entr(p, q).sum(axis=-1)
+
+
+@torch.no_grad()
+def evaluate_model(forwards: list, opt_model: OptimalModel, device):
+    for prefixes in batch(tqdm(opt_model), 4096):
+        x = torch.nested.nested_tensor(
+            prefixes, dtype=torch.long, device=device
+        ).to_padded_tensor(TicTacToeDataset.pad_token)
+        all_preds = [forward(x).softmax(-1).cpu().numpy() for forward in forwards]
+
+        indices = np.array([len(p) - 1 for p in prefixes])
+        arange = np.arange(len(prefixes))
+        all_preds = [preds[arange, indices] for preds in all_preds]
+
+        for i, prefix in enumerate(prefixes):
+            probs, weight = opt_model[prefix]
+
+            for j, preds in enumerate(all_preds):
+                arg_max = np.argmax(preds[i])
+                kl = kl_divergence(probs, preds[i]) * weight / opt_model.total_weight
+                assert kl >= 0, (probs, preds[i])
+                is_valid = probs[arg_max] > 0
+                is_acc = (probs <= probs[arg_max]).all()
+
+                metrics.log_dict(
+                    {
+                        f"{j}/kl": kl.item(),
+                        f"{j}/valid": is_valid.item(),
+                        f"{j}/accurate": is_acc.item(),
+                    }
+                )
+
+    kls = []
+    valids = []
+    accs = []
+    for j in range(len(forwards)):
+        logs = metrics.collect_group(f"{j}/")
+        kl = np.array(logs[f"{j}/kl"]).sum().item()
+        valid = np.array(logs[f"{j}/valid"]).mean().item()
+        acc = np.array(logs[f"{j}/accurate"]).mean().item()
+        kls.append(kl)
+        valids.append(valid)
+        accs.append(acc)
+
+    return kls, valids, accs
 
 
 def main(_):
@@ -48,119 +91,84 @@ def main(_):
     model.load_and_process_state_dict(state_dict)
     model.eval()
 
-    @torch.no_grad()
-    def forward(x) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        logits, cache = model.run_with_cache(x)
-        mlp_out = cache["mlp_out", -1]
-        logits_mlp_only = model.unembed(normalize(mlp_out))
-        logits_mlp_only_no_ln = model.unembed(mlp_out)
-        return logits, logits_mlp_only, logits_mlp_only_no_ln  # type: ignore
-
     opt_model = OptimalModel()
 
-    chance_level_logits = torch.tensor(0, dtype=torch.float32)
-    total_weight = 0
-    for prefix in opt_model:
-        probs, weight = opt_model[prefix]
-        chance_level_logits += probs * weight
-        total_weight += weight
-    chance_level_logits /= total_weight
-    chance_level_logits = torch.log(chance_level_logits)
+    methods = []
 
-    def eval_batch(prefixes, logits):
-        kls = []
-        valid = []
-        accurate = []
-        for prefix, logit in zip(prefixes, logits):
-            probs, weight = opt_model[prefix]
-            probs = torch.tensor(probs, dtype=torch.float32)
-            pred = logit.argmax()
+    # --- Full model ---
+    def forward_full(x):
+        return model(x)
 
-            kl = kl_divergence(probs, logit) * (weight / total_weight)
-            is_valid = probs[pred] > 0
-            is_acc = (probs <= probs[pred]).all()
+    # methods.append((forward_full, "full"))
 
-            kls.append(kl)
-            valid.append(is_valid)
-            accurate.append(is_acc)
+    # --- MLP only ---
+    def forward_mlp_only(x):
+        logits, cache = model.run_with_cache(x)
+        return model.unembed(normalize(cache["mlp_out", -1]))
 
-        return torch.tensor(kls), torch.tensor(valid), torch.tensor(accurate)
+    # methods.append((forward_mlp_only, "mlp_only"))
 
-    for prefixes in batch(opt_model, 4096):
-        x = torch.nested.nested_tensor(
-            prefixes, dtype=torch.long, device=F.device
-        ).to_padded_tensor(TicTacToeDataset.pad_token)
-        logits, logits_mlp_only, logits_mlp_only_no_ln = forward(x)
-        logits = logits.to("cpu")
-        logits_mlp_only = logits_mlp_only.to("cpu")
-        logits_mlp_only_no_ln = logits_mlp_only_no_ln.to("cpu")
+    # --- MLP only, no layer normalization ---
+    def forward_mlp_only_no_ln(x):
+        logits, cache = model.run_with_cache(x)
+        return model.unembed(cache["mlp_out", -1])
 
-        indices = torch.tensor([len(p) - 1 for p in prefixes], dtype=torch.long)
-        arange = torch.arange(len(prefixes), dtype=torch.long)
-        logits = logits[arange, indices]
-        logits_mlp_only = logits_mlp_only[arange, indices]
-        logits_mlp_only_no_ln = logits_mlp_only_no_ln[arange, indices]
+    # methods.append((forward_mlp_only_no_ln, "mlp_only_no_ln"))
 
-        kls, valid, accurate = eval_batch(prefixes, logits)
-        kls_mlp_only, valid_mlp_only, accurate_mlp_only = eval_batch(
-            prefixes, logits_mlp_only
+    # --- Pruned model ---
+    neurons_file = checkpoint_dir / f"neurons_{FLAGS.step}.json"
+    if neurons_file.is_file():
+        with open(neurons_file, "r") as f:
+            neurons = {int(k): v for k, v in json.load(f).items()}
+        neurons = sorted(neurons.keys(), key=lambda k: -neurons[k])
+
+        def neuron_hook(value, hook, ignored_neurons):
+            value[:, :, ignored_neurons] -= 100
+            return value
+
+        for prune_percent in FLAGS.prune_percent:
+            ignored_neurons = neurons[: int(len(neurons) * prune_percent)]
+            logging.info(f"Ignoring {len(ignored_neurons)} neurons")
+
+            methods.append(
+                (
+                    partial(
+                        model.run_with_hooks,
+                        fwd_hooks=[
+                            (
+                                utils.get_act_name("mlp_pre", 0),
+                                partial(neuron_hook, ignored_neurons=ignored_neurons),
+                            )
+                        ],
+                    ),
+                    f"pruned_{prune_percent}",
+                )
+            )
+
+    # --- Chance level ---
+    # chance_level_logits = torch.tensor(0, dtype=torch.float32)
+    # for prefix in opt_model:
+    #     probs, weight = opt_model[prefix]
+    #     chance_level_logits += probs * weight / opt_model.total_weight
+    # chance_level_logits = torch.log(chance_level_logits)
+
+    # def forward_chance(x):
+    #     return torch.broadcast_to(
+    #         chance_level_logits, (x.shape[0], x.shape[1], chance_level_logits.shape[0])
+    #     )
+
+    # methods.append((forward_chance, "chance"))
+
+    forwards, names = zip(*methods)
+    kls, valids, accs = evaluate_model(forwards, opt_model, F.device)
+    for name, kl, valid, acc in zip(names, kls, valids, accs):
+        logging.info(
+            "%s: KL divergence: %.6f nats, valid accuracy: %.2f%%, accurate accuracy: %.2f%%",
+            name,
+            kl,
+            valid * 100,
+            acc * 100,
         )
-        kls_mlp_only_no_ln, valid_mlp_only_no_ln, accurate_mlp_only_no_ln = eval_batch(
-            prefixes, logits_mlp_only_no_ln
-        )
-        kls_chance, valid_chance, accurate_chance = eval_batch(
-            prefixes, torch.tile(chance_level_logits, (len(prefixes), 1))
-        )
-        metrics.log_dict(
-            {
-                "kl_div": kls,
-                "kl_div_mlp_only": kls_mlp_only,
-                "kl_div_mlp_only_no_ln": kls_mlp_only_no_ln,
-                "kl_div_chance": kls_chance,
-                "valid": valid,
-                "valid_mlp_only": valid_mlp_only,
-                "valid_mlp_only_no_ln": valid_mlp_only_no_ln,
-                "valid_chance": valid_chance,
-                "accurate": accurate,
-                "accurate_mlp_only": accurate_mlp_only,
-                "accurate_mlp_only_no_ln": accurate_mlp_only_no_ln,
-                "accurate_chance": accurate_chance,
-            }
-        )
-    logs = metrics.collect_group("")
-    logging.info(
-        "KL divergence: %.6f nats (MLP only: %.6f nats, No LN: %.6f nats, chance: %.6f nats)",
-        torch.cat(logs["kl_div"]).sum().item(),
-        torch.cat(logs["kl_div_mlp_only"]).sum().item(),
-        torch.cat(logs["kl_div_mlp_only_no_ln"]).sum().item(),
-        torch.cat(logs["kl_div_chance"]).sum().item(),
-    )
-
-    valid = torch.cat(logs["valid"]).float().mean().item()
-    valid_mlp_only = torch.cat(logs["valid_mlp_only"]).float().mean().item()
-    valid_mlp_only_no_ln = torch.cat(logs["valid_mlp_only_no_ln"]).float().mean().item()
-    valid_chance = torch.cat(logs["valid_chance"]).float().mean().item()
-    logging.info(
-        "Valid accuracy: %.2f%% (MLP only: %.2f%%, No LN: %.2f%%, chance: %.2f%%)",
-        valid * 100,
-        valid_mlp_only * 100,
-        valid_mlp_only_no_ln * 100,
-        valid_chance * 100,
-    )
-
-    acc = torch.cat(logs["accurate"]).float().mean().item()
-    acc_mlp_only = torch.cat(logs["accurate_mlp_only"]).float().mean().item()
-    acc_mlp_only_no_ln = (
-        torch.cat(logs["accurate_mlp_only_no_ln"]).float().mean().item()
-    )
-    acc_chance = torch.cat(logs["accurate_chance"]).float().mean().item()
-    logging.info(
-        "Accurate accuracy: %.2f%% (MLP only: %.2f%%, No LN: %.2f%%, chance: %.2f%%)",
-        acc * 100,
-        acc_mlp_only * 100,
-        acc_mlp_only_no_ln * 100,
-        acc_chance * 100,
-    )
 
 
 if __name__ == "__main__":

@@ -1,6 +1,16 @@
 \begin{figure}[t]
     \centering
-    \includegraphics[width=0.5\linewidth]{../out/figs/neuron_importance.pdf}
-    \caption{The majority of the neurons have negligible impact on the loss when removed from the model. Notice the x-axis is in log-scale, spanning several orders of magnitude. \todo{Update caption}}
-    \label{fig:neuron-importance}
+    \begin{subfigure}[t]{0.46\textwidth}
+        \includegraphics[width=\linewidth]{../out/figs/neuron_importance.pdf}
+        \caption{Effect of removing each neuron on the KL divergence, ordered from lowest to highest. Notice the y-axis is in log-scale.}
+        \label{fig:neuron-importance}
+    \end{subfigure}%
+    \hfill
+    \begin{subfigure}[t]{0.50\textwidth}
+        \includegraphics[width=\linewidth]{../out/figs/neuron_pruning.pdf}
+        \caption{The retained performance of pruning the bottom $n\%$ of neurons, ordered according to \cref{fig:neuron-importance}. The dotted line marks the 70\% threshold where there appears to be a clear cut-off.}
+        \label{fig:neuron-pruning}
+    \end{subfigure}
+    \caption{Approximately 30\% of the neurons explain most of the performance of \ttgpt.}
+    \label{fig:neurons}
 \end{figure}

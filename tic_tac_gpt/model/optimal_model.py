@@ -24,6 +24,7 @@ class OptimalModel:
         logging.info("Counted %d prefixes", len(self.table))
         logging.info("Game counts from [BOS]: %s", self.table[(self.ds.bos_token,)])
 
+        self.total_weight = sum(np.sum(counts) for counts in self.table.values())
         for prefix, counts in self.table.items():
             self.weights[prefix] = np.sum(counts)
             self.table[prefix] = counts / self.weights[prefix]
