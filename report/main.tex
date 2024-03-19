@@ -332,11 +332,19 @@ Decomposing the pre-activations into circuits are useful as they each have an in
 
 The output circuit is considerably simpler since \cref{sec:simplify-output} has established that only the direct contributions from the MLP layer matter. Ignoring LayerNorm, each neuron's effect on the output logits is given by $\m{W}_{out} \m{W}_U$.
 
-\subsubsection{Visualisation}
+\subsubsection{Visualisation and interpretation}
 
 \input{figures/neuron_sample.tex}
 
 For each neuron, the data-dependent input circuits $\m{W}_e$, $\m{W}_{h_0}$ and $\m{W}_{h_1}$ each give a scalar for how much a neuron reacts to a given move on the board. Such values are best visualised as a 3x3 grids. The output logits is composed of two components: The move logits and the special token logits. Since they conceptually represent different quantities, they are plotted separately. An example visualising the 508\textsuperscript{th} neuron (denoted as \texttt{N508}) is shown in \cref{fig:neuron-sample}. The visualisation strategy is successful as it is immediately clear what this neuron is performing: It identifies three-in-a-rows down in the middle column for player \texttt{O}.
+
+\input{figures/neuron_categories.tex}
+
+We can now scale up the visualisation strategy detailed in \cref{fig:neuron-sample} to the rest of the neurons identified in \cref{sec:neurons-that-matter}. Manually inspecting the visualisations reveals that many of neurons are interpretable as they implement certain ``rules'' of the task. The neurons with the most obvious interpretation are the ``\texttt{X} wins'' (\cref{fig:neurons-x-win}) and the ``\texttt{O} wins'' (\cref{fig:neurons-o-win}) neurons. Such neurons react the most strongly to moves via the $\m{W}_{h_1}$ circuit (i.e. moves played by the current player) to determine whether the next token should be a winner's token. It also makes use of the turn number via the $\m{W}_p$ circuit to determine whether the winner should be \texttt{X} for odd-numbered turns, or \texttt{O} for even-numbered turns. Surprisingly, there appears to be exactly 16 of such neurons in \ttgpt, corresponding to the 8 three-in-a-row combinations for each player.
+
+Some other neurons mainly affect the predicted move distributions. For example, I identified ``single move suppression'' neurons that prevent moves that have been played before to be played again on the board (\cref{fig:neurons-suppress-single}). These neurons react to inputs from both the $\m{W}_{h_0}$ and $\m{W}_{h_1}$ circuits which can interpreted as ``no matter who played the move before, the same move cannot be played again''.
+
+Another interest class of neurons are those who affect groups of moves. One outstanding collection of neurons are the ``winning move suppression'' neurons which discourages the probability of playing moves that immediately results in a winning three-in-row. The existence of such neurons matches our intuition as the true task of the model is to predict the game tree distributions, where immediately winning moves have the least number possible continuations. Unlike the ``\texttt{X} wins'' or ``\texttt{O} wins'' neurons that mainly respond to the $\m{W}_{h_1}$ circuit, these neurons reacts strongly to the $\m{W}_{h_0}$ circuit. It does so to attend to the moves played by the opponent, and reduces the probabilities of the next moves (the opponent's move) that are immediately winning. One might argue that the existence of such neurons suggests that \ttgpt has learned to ``think one step ahead'' as the negatives of predicting a winning move only shows after two steps. I tend not to believe in such claim as I observed no other evidence that \ttgpt utilises the min-max nature of the game to make its predictions.
 
 \newpage
 

@@ -178,7 +178,7 @@ L1:
 
 ### Draws
 
-145, 244, 245, 124
+135, 244, 245, 124
 
 ### Move suppression (single)
 
