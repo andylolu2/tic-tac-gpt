@@ -1,6 +1,6 @@
 \begin{figure}[t]
     \centering
-    \includegraphics[width=\linewidth]{../out/figs/neuron_508.pdf}
+    \includegraphics[width=0.85\linewidth]{../out/figs/neuron_508.pdf}
     \caption{Visualisation of input and output circuits of \texttt{N508}. The 9x1 vertical line visualises positional quantities (i.e. turns of the game), ordered from turn 1 to turn 9 from top to bottom. The 3x3 grids visualise quantities that are tied to board positions. The first four columns visualises the input circuits. The last two columns visualises the effect of this neuron on the output logits. Blue denotes strong positive contribution while red denotes strong negative contribution. The visualisation suggests that this neuron implements the rule ``If it is currently turn 6 or 8 (from the $\m{W}_p$ circuit) and the currently player has filled the middle column (from the $\m{W}_{h_1}$ circuit), the next token is \texttt{[O]}, i.e. \texttt{O} wins.''}
     \label{fig:neuron-sample}
 \end{figure}

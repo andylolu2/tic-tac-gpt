@@ -130,13 +130,13 @@
 
 
 \begin{abstract}
-    While \ac{LLMs} demonstrate strong capabilities from simple sequence modelling, its inner workings remain as a black-box. In this project, as a step towards interpreting \ac{LLMs}, I fully reverse engineer a toy sequence model trained on \ttt game sequences. \todo{Add results}
+    While \ac{LLMs} demonstrate strong capabilities from simple sequence modelling, its inner workings remain as a black-box. As a step towards bridging this gap, this project meticulously studies \ttgpt, a toy sequence model trained on \ttt game sequences. By deconstructing the internals of \ttgpt, down to the level of individual neurons, I build a complete understanding of how \ttgpt solves it task. The results show that \ttgpt correctly learns the rules of the game and makes its predictions logically, though it does not learn to respect every symmetry of the task.
 \end{abstract}
 
 
 \section{Introduction}
 
-While the success of deep learning in practice is ubiquitous, interpreting and explaining the behaviour of neural networks remain a difficult problem. The inability to understand the models' internal components is a significant bottleneck to building reliable machine learning systems since typical evaluation methods provides no guarantee when given out-of-distribution inputs. Mechanistic interpretability is an emerging approach to explainability by focusing on tractable, low-level components of a model, using them as an entry point to build an overall understanding of a model's behaviour. This project aims to build upon this line of work, showcasing another example where models are not black boxes and can be made human-interpretable with sufficient effort. \todo{Add citations}
+While the success of deep learning in practice is ubiquitous, interpreting and explaining the behaviour of neural networks remain a difficult problem. The inability to understand the models' internal components is a significant bottleneck to building reliable machine learning systems since typical evaluation methods provides no guarantee when given out-of-distribution inputs. Mechanistic interpretability is an emerging approach to explainability by focusing on tractable, low-level components of a model, using them as an entry point to build an overall understanding of a model's behaviour. The aim is to determine whether neural networks only ``appear'' to be correct by stacking statistical correlations or do they truly reason about the task in logical manner. This project aims to build upon this line of work, showcasing another example where models are not black boxes and can be made human-interpretable with sufficient effort \cite{nanda2023progress,tigges2023linear,heimersheim2023circuit}.
 
 There has been particular interest in understanding sequence models trained with next-token prediction, specifically on whether next-token prediction is sufficient for building generally intelligent models. On one hand, there exists theoretical arguments \citep{bender2020climbing,merrill2021provable} that such models merely learn statistical correlations and thus cannot understand the casual relationships of the underlying data generation process. On the other hand, many empirical studies reveal opposing evidence where models appear to have build accurate world models internally. Unfortunately, models used in practice are often too complex to be understood \emph{fully} as they are often too large and many factors like data selection and training optimisations are not controlled for. Several works have thus shifted its focus to simpler sequence models on synthetic datasets \citep{toshniwal2021learning,orthello-gpt} where the task is well-understood.
 
@@ -229,7 +229,7 @@ The first observation is that a one-layer transformer is sufficient to solve the
 
 \input{figures/attention.tex}
 
-The second observation is that the model appears to have learnt attention patterns that is independent of the input sequence. From the example attention map in \cref{fig:attn-pattern}, we see that both attention heads use checkerboard-like attention patterns. Heuristically, it appears that \texttt{Head0} is performing ``attend to all moves played by the opponent'' and \texttt{Head1} is doing the same but for the current player. Since the player order in \ttt is always the same (alternates between \texttt{X} and \texttt{O}), it is very likely that the attention pattern is derived from positional information alone.
+The second observation is that the model appears to have learnt attention patterns that is independent of the input sequence. From the example attention map in \cref{fig:attn-pattern}, we see that both attention heads use chequerboard-like attention patterns. Heuristically, it appears that \texttt{Head0} is performing ``attend to all moves played by the opponent'' and \texttt{Head1} is doing the same but for the current player. Since the player order in \ttt is always the same (alternates between \texttt{X} and \texttt{O}), it is very likely that the attention pattern is derived from positional information alone.
 
 To confirm the above intuition analytically, I perform sensitivity analysis of the attention pattern to identify which inputs have the most affect. To do so, I study a function $a^{(i)}$ that calculates the unnormalised attention paid by token $t_q$ at position $p_q$ on another token $t_k$ at position $p_k$, for attention head $i$. This can be done by unfolding the embedding and attention calculation as described by \cref{eq:embed,eq:attn}, giving the following definition:
 \begin{equation*}
@@ -247,7 +247,7 @@ To confirm the above intuition analytically, I perform sensitivity analysis of t
          & = \layernorm((\m{W}_E)_{t_k} + (\m{W}_P)_{p_k})^T
     \end{aligned}
 \end{equation*}
-Treating $t_q, p_q, t_k, p_k$ as independent, uniformly distributed random variables, one can decompose the variance of $a^{(i)}$ into those explained by first-order terms (i.e. each input individually), second-order terms (i.e. interactions between pairs of inputs) and higher-order terms using Sobol's method \citep{sobol1993sensitivity,sobol2001global}. As shown in \cref{fig:attn-sobol}, nearly all of the variance can be explained by second-order interactions between $p_1$ and $p_2$. This matches our intuition since checkerboard attention patterns requires second-order interactions yet are purely positional. Thus, \ttgpt uses attention patterns that are input-independent and so \emph{the attention matrices $\m{A}^{(0)}, \m{A}^{(1)}$ are constants}.
+Treating $t_q, p_q, t_k, p_k$ as independent, uniformly distributed random variables, one can decompose the variance of $a^{(i)}$ into those explained by first-order terms (i.e. each input individually), second-order terms (i.e. interactions between pairs of inputs) and higher-order terms using Sobol's method \citep{sobol1993sensitivity,sobol2001global}. As shown in \cref{fig:attn-sobol}, nearly all of the variance can be explained by second-order interactions between $p_1$ and $p_2$. This matches our intuition since chequerboard attention patterns requires second-order interactions yet are purely positional. Thus, \ttgpt uses attention patterns that are input-independent and so \emph{the attention matrices $\m{A}^{(0)}, \m{A}^{(1)}$ are constants}.
 
 \todo{Maybe characterise what the attention does here?}
 
@@ -345,6 +345,27 @@ We can now scale up the visualisation strategy detailed in \cref{fig:neuron-samp
 Some other neurons mainly affect the predicted move distributions. For example, I identified ``single move suppression'' neurons that prevent moves that have been played before to be played again on the board (\cref{fig:neurons-suppress-single}). These neurons react to inputs from both the $\m{W}_{h_0}$ and $\m{W}_{h_1}$ circuits which can interpreted as ``no matter who played the move before, the same move cannot be played again''.
 
 Another interest class of neurons are those who affect groups of moves. One outstanding collection of neurons are the ``winning move suppression'' neurons which discourages the probability of playing moves that immediately results in a win. The existence of such neurons matches our intuition as the true task of the model is to predict the game tree distributions, where immediately winning moves have the least number possible continuations. Unlike the ``\texttt{X} wins'' or ``\texttt{O} wins'' neurons that mainly respond to the $\m{W}_{h_1}$ circuit, these neurons reacts strongly to the $\m{W}_{h_0}$ circuit as it needs to attend to the moves played by the opponent. One might argue that the existence of such neurons suggests that \ttgpt has learned to ``think one step ahead'' as the negatives of predicting a winning move only shows after two steps. I tend not to believe in such claim as I observed no other evidence that \ttgpt utilises the min-max nature of the game to make its predictions.
+
+% \subsection{Prediction out-of-distribution}
+
+% \begin{figure}
+
+% \end{figure}
+
+% One of the motivations for interpretable machine learning to achieve performance guarantees when operating out-of-distribution (OOD). While the above analysis of \ttgpt is quite general, many simplifying assumptions were made based on in-distribution observations. For example, the important neurons were identified with real \ttt game sequences. One might question the applicability of our understanding of \ttgpt when handling OOD data. To test this, I feed invalid game sequences to \ttgpt to simulate OOD behaviour. One example is:
+% \input{figures/ood_sample.tex}
+
+% We find that...
+
+\subsection{What has \ttgpt learned?}
+
+Our analysis in \cref{sec:neurons-visualisation} show that \ttgpt has undoubtedly learned some structure about \ttt. In is section, I give a qualitative assessment on to what extent has \ttgpt fully ``understood'' \ttt, where I define ``understanding'' as using solutions that respect the structure and symmetries of the game.
+
+\ttt has several symmetries in the time domain. For instance, the player always alternates between \texttt{X} and \texttt{O} on each move. Another example is that \ttt is a Markovian process---the order of moves do not matter if they lead to the same game state. The fixed attention patterns (\cref{fig:attn-pattern}) is a good indicator that \ttgpt utilises both of these rules: The chequerboard-like patterns clearly matches with the alternating nature of the game. We also see each query generally attends equally to all of its previous moves, suggesting that it is not the order of moves that matter, but rather the combination of moves.
+
+The board of \ttt also contains many symmetries geometrically, such reflectional and rotational symmetries. One might also argue for translational symmetry (e.g. A three-in-a-row in the left column has the same effect as one in the middle/right.) Our inspection of the neurons \cref{sec:neurons-visualisation} do \emph{not} reveal any evidence that \ttgpt has learned such structures. For example, \ttgpt uses a distinct neuron (8 of them in total) for each of the winning combinations while there are only 5 cases if it respects reflectional symmetry or 3 cases if it respects rotational symmetry. There are also distinct ``move suppression'' neurons (\cref{fig:neurons-suppress-single}) for each of the 9 board positions. One explanation to why \ttgpt fails to learn geometric symmetries is that the output predictions are \emph{not} geometrically invariant. To leverage such structures the model would have to encode \emph{and decode} the symmetries which is a more complicated algorithm than to simply ignore them.
+
+\section{Conclusion}
 
 \newpage
 
