@@ -196,33 +196,19 @@ L1:
 
 119, 436, 17, 243, 72, 10, 274, 86, 45, 241, 92, 137, 118, 73, 157, 70
 
-### Unknown
-
-104, 412, 155, 507, 237, 117, 256. 414, 120, 34, 88, 408, 470, 82, 349, 49, 201, 422, 85, 280, 359, 335, 129, 287, 264, 156, 461
-
 ### Winner by position
 
 266, 472
 
-### Multi-purpose
+### Move suppression and winner by position
 
-- 194: Move suppression and winner by position
-- 324: Move suppression and winner by position
-- 270: Move suppression and winner by position
-- 161: Move suppression and winner by position
-- 152: Move suppression and winner by position
-- 130: Move suppression and winner by position
-- 469: Move suppression and winner by position
-- 248: Move suppression and winner by position
-- 22: Move suppression and winner by position
-- 61: Move suppression and winner by position
-- 420: Move suppression and winner by position
-- 51: Move suppression and winner by position
-- 19: Move suppression and winner by position
-- 284: Move suppression and winner by position
-- 169: Move suppression and winner by position
-- 90: Move suppression and winner by position
-- 424: Move suppression and winner by position
+194, 324, 270, 161, 152, 130, 469, 248, 22, 61, 420, 51, 19, 284, 169, 90, 424
+
+### Unknown
+
+104, 412, 155, 507, 237, 117, 256. 414, 120, 34, 88, 408, 470, 82, 349, 49, 201, 422, 85, 280, 359, 335, 129, 287, 264, 156, 461
+
+### Multi-purpose
 - 487: Multi move suppression and anti draw
 - 209: Multi move suppression and draw
 - 483: Anti win and move suppression

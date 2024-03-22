@@ -130,17 +130,17 @@
 
 
 \begin{abstract}
-    While \ac{LLMs} demonstrate strong capabilities from simple sequence modelling, its inner workings remain as a black-box. As a step towards bridging this gap, this project meticulously studies \ttgpt, a toy sequence model trained on \ttt game sequences. By deconstructing the internals of \ttgpt, down to the level of individual neurons, I build a complete understanding of how \ttgpt solves it task. The results show that \ttgpt correctly learns the rules of the game and makes its predictions logically, though it does not learn to respect every symmetry of the task.
+    While \ac{LLMs} demonstrate strong capabilities from simple sequence modelling, its inner workings remain as a black-box. As a step towards bridging this gap, this project meticulously studies \ttgpt, a toy sequence model trained on \ttt game sequences. By deconstructing the internals of \ttgpt, down to the level of individual neurons, I build a complete understanding of how \ttgpt solves it task. The results show that \ttgpt correctly learns the rules of the game and makes its predictions logically. It however does not learn to respect every symmetry of the task, revealing the limits of next-token prediction models. The repository is available at \url{https://github.com/andylolu2/tic-tac-gpt}.
 \end{abstract}
 
 
 \section{Introduction}
 
-While the success of deep learning in practice is ubiquitous, interpreting and explaining the behaviour of neural networks remain a difficult problem. The inability to understand the models' internal components is a significant bottleneck to building reliable machine learning systems since typical evaluation methods provides no guarantee when given out-of-distribution inputs. Mechanistic interpretability is an emerging approach to explainability by focusing on tractable, low-level components of a model, using them as an entry point to build an overall understanding of a model's behaviour. The aim is to determine whether neural networks only ``appear'' to be correct by stacking statistical correlations or do they truly reason about the task in logical manner. This project aims to build upon this line of work, showcasing another example where models are not black boxes and can be made human-interpretable with sufficient effort \cite{nanda2023progress,tigges2023linear,heimersheim2023circuit}.
+While the success of deep learning in practice is ubiquitous, interpreting and explaining the behaviour of neural networks remain a difficult problem. The inability to understand the models' internal components is a significant obstacle to building reliable machine learning systems since typical evaluation methods provides no guarantee on out-of-distribution inputs. Mechanistic interpretability is an emerging approach to explainability by focusing on tractable, low-level components of a model, using them as an entry point to build an overall understanding of a model's behaviour. The aim is to determine whether neural networks only ``appear'' to be correct by stacking statistical correlations or truly reason about the task in logical manner. This project aims to build upon this line of work, showcasing another example where models are not black boxes and can be made human-interpretable with sufficient effort \cite{nanda2023progress,tigges2023linear,heimersheim2023circuit}.
 
-There has been particular interest in understanding sequence models trained with next-token prediction, specifically on whether next-token prediction is sufficient for building generally intelligent models. On one hand, there exists theoretical arguments \citep{bender2020climbing,merrill2021provable} that such models merely learn statistical correlations and thus cannot understand the casual relationships of the underlying data generation process. On the other hand, many empirical studies reveal opposing evidence where models appear to have build accurate world models internally. Unfortunately, models used in practice are often too complex to be understood \emph{fully} as they are often too large and many factors like data selection and training optimisations are not controlled for. Several works have thus shifted its focus to simpler sequence models on synthetic datasets \citep{toshniwal2021learning,orthello-gpt} where the task is well-understood.
+There has been particular interest in understanding sequence models trained with next-token prediction, specifically on whether next-token prediction is sufficient for learning accurate world models. On one hand, there exists theoretical arguments \citep{bender2020climbing,merrill2021provable} that such models merely learn statistical correlations and thus cannot understand the casual relationships of the underlying data generation process. There is also empirical evidence that support this view \cite{mccoy2023embers}. On the other hand, some empirical studies reveal opposing evidence where models appear to build accurate world models internally \cite{meng2022locating,tigges2023linear}. Unfortunately, models used in practice are often too complex to be understood fully as many factors like data selection and training optimisations are not controlled for. Several works have thus shifted its focus to simpler sequence models on synthetic datasets \citep{toshniwal2021learning,orthello-gpt} where the task is well-understood.
 
-This project studies sequence models trained on synthetic game sequences of \ttt. The simplistic nature of the task permits the use of a one-layer transformer that still solves the task perfectly. This greatly simplifies the analysis and allows us to fully reverse engineer the model, resulting in predictable behaviour even on out-of-distribution data. \todo{Explain contributions.}
+This project studies autoregressive transformers trained on synthetic game sequences of \ttt. The high level goal is to understand how a next-token prediction model learns to solve this task. The simplistic nature of the task permits the use of a one-layer transformer, \ttgpt, that still solves the task perfectly. This greatly simplifies the analysis and allows us to fully reverse engineer the model, down to the level of understanding what features of the inputs activate which neurons and their effects on the model's predictions.
 
 \section{Background}
 
@@ -148,9 +148,9 @@ This section covers the necessary background to understand the contributions of 
 
 \subsection{Related works} \label{sec:related}
 
-\citet{toshniwal2021learning} were the first to probe for internal world presentations of next-token prediction models. The authors reveal that models trained to predict the next moves in chess track the state of the board internally. \citet{orthello-gpt} extend this idea by studying a next-move prediction model trained on Orthello. They demonstrate that not only do the models track the board state, interventions on the internal representation also have the expected casual effect on the model's outputs. This provides strong evidence that models trained on sequence modelling can in fact ``understand'' the nature of the task rather than simply memorising statistical patterns. \citet{linear-orthello-gpt} further reveal that the board state can be expressed as a linear projection of the internal representation. While such works identify core properties of the model like its internal representations, they still fail to explain the model behaviour in full. For example, no explanation is offered as to \emph{how} the internal board representations are computed. This project aims to close this gap by narrowing the focus to even simpler tasks and models.
+There are vast amounts of literature on demystifying how neural networks make their predictions. One direction of study attempts to interpret the meaning of neurons in a network and have found many examples where neurons capture human-interpretable concepts such as objects and features in images \cite{bau2020understanding,cammarata2020thread:,zhou2014object}, tense, language and gender in natural language \cite{bau2018identifying,gurnee2023finding}, or context in code \cite{karpathy2015visualizing}. While such analysis can identify data features captured by the model, it does not characterise how the neurons are related to the inputs or effect the outputs, and thus does not fundamentally solve the black-box problem. Mechanistic interpretability is an emerging field that aims to find the underlying mechanism to how a model makes its predictions. Similar to this project, most work in mechanistic interpretability focuses on simplified models as they are the most tractable to analyse \cite{elhage2022toy,elhage2021mathematical,olsson2022context,nanda2023progress}.
 
-\todo{Talk about other MI works}
+\citet{toshniwal2021learning} were the first to probe for internal world presentations of next-token prediction models. The authors reveal that models trained to predict the next moves in chess track the state of the board internally. \citet{orthello-gpt} extend this idea by studying a next-move prediction model trained on Orthello. They demonstrate that not only do the models track the board state, interventions on the internal representation also have the expected casual effect on the model's outputs. This provides strong evidence that models trained on sequence modelling can in fact ``understand'' the nature of the task rather than simply memorising statistical patterns. \citet{linear-orthello-gpt} further reveal that the board state can be expressed as a linear projection of the internal representation. While such works identify core properties of the model like its internal representations, they still fail to explain the model behaviour in full. For example, no explanation is offered as to \emph{how} the internal board representations are computed. This project aims to close this gap by narrowing down to even simpler tasks and models.
 
 \subsection{Mathematical framework of transformers} \label{sec:math}
 
@@ -162,7 +162,7 @@ Let $\m{E} \in \R^{s \times v}$ be the one-hot encoded input tokens, where $s$ i
 \end{equation}
 where $\m{W}_E \in \R^{v \times d}$, $\m{W}_P \in \R^{s \times d}$ and $d$ is the hidden dimension of the model.
 
-The core component of the transformer is the attention layer. In this project, we focus on the multi-head, casual, self-attention variant. Each attention head $i$ is parameterised by the query $\m{W}_Q^{(i)} \in \R^{d \times h}$, $\v{b}_Q^{(i)} \in \R^{1 \times h}$, key $\m{W}_K^{(i)} \in \R^{d \times h}$, $\v{b}_K^{(i)} \in \R^{1 \times h}$, value $\m{W}_V^{(i)} \in \R^{d \times h}$, $\v{b}_V^{(i)} \in \R^{1 \times h}$ and output $\m{W}_O^{(i)} \in \R^{h \times d}$, $\v{b}_O^{(i)} \in \R^{1 \times d}$ projections, where $h$ is the head dimension. The attention operator can be expressed as:
+The core component of the transformer is the attention layer. In this project, we focus on the multi-head, casual, self-attention variant. Each attention head $i$ is parameterised by the query $\m{W}_Q^{(i)} \in \R^{d \times h}$, $\v{b}_Q^{(i)} \in \R^{1 \times h}$, key $\m{W}_K^{(i)} \in \R^{d \times h}$, $\v{b}_K^{(i)} \in \R^{1 \times h}$, value $\m{W}_V^{(i)} \in \R^{d \times h}$, $\v{b}_V^{(i)} \in \R^{1 \times h}$ and output $\m{W}_O^{(i)} \in \R^{h \times d}$, $\v{b}_O^{(i)} \in \R^{1 \times d}$ projections, where $h$ is the head dimension. The attention operator is defined as:
 \begin{equation}  \label{eq:attn}
     \begin{aligned}
         \attn(\m{X})
@@ -178,13 +178,13 @@ The core component of the transformer is the attention layer. In this project, w
 \end{equation}
 where $\v{1}_s \in \R^{s \times 1}$ is a vector of ones and $\tril(\m{X}, y)$ fills the upper triangular matrix of $\m{X}$ with $y$. The typical scaling by factor of $1/\sqrt{d}$ in the attention matrix is ignored as it is a linear operation and thus can be folded into the weights.
 
-The other building block is the MLP block which can be expressed as:
+The other building block is the MLP block which is given by:
 \begin{equation*}
     \text{MLP}(\m{X}) = \phi(
     \m{X} \m{W}_{in} + \v{1}_s \m{b}_{in}
     ) \m{W}_{out} + \v{1}_s \m{b}_{out}
 \end{equation*}
-where $\m{W}_{in} \in \R^{d \times 4d}$, $\v{b}_{in} \in \R^{1 \times 4d}$, $\m{W}_{out} \in \R^{4d \times d}$, $\v{b}_{out} \in \R^{1 \times d}$ and $\phi$ is an elementwise non-linearity.
+where $\m{W}_{in} \in \R^{d \times 4d}$, $\v{b}_{in} \in \R^{1 \times 4d}$, $\m{W}_{out} \in \R^{4d \times d}$, $\v{b}_{out} \in \R^{1 \times d}$ and $\phi$ is a non-linearity.
 
 Putting everything together, the transformer output $\m{Y} \in \R^{s \times v}$ can be expressed as:
 \begin{equation}  \label{eq:transformer}
@@ -209,19 +209,19 @@ One might naively think that the task only involves learning what moves are lega
 
 \subsection{Model and experiment details}
 
-The training of \ttgpt mostly follows standard practices \citep{radford2019language} for typical prefix \ac{LLMs}. \ttgpt is a one-layer transformer with 128 hidden dimensions, 2 attention heads, 512 MLP dimensions, learnt positional encodings and uses the pre-norm architecture \citep{xiong2020layer}. The only non-standard architectural choice is the use of the Softmax Linear Units ($\solu$) \citep{elhage2022solu} activation function in the MLP. It is defined as:
+The training of \ttgpt mostly follows standard practices \citep{radford2019language} for typical prefix \ac{LLMs}. \ttgpt is a one-layer transformer with 128 hidden dimensions, 2 attention heads, 512 MLP dimensions, learnt positional encodings and uses the pre-norm architecture \citep{xiong2020layer}. The only non-standard architectural choice is the use of the Softmax Linear Units ($\solu$) \citep{elhage2022solu} non-linearity in the MLP:
 \begin{equation*}
     \solu(\m{X}) = \layernorm(\m{X} \cdot \softmax(\m{X}))
 \end{equation*}
-\citet{elhage2022solu} demonstrated that $\solu$ increases the interpretability of MLP neurons such as by reducing polysemanticity\footnote{Polysemanticity is the phenomenon where neurons respond to multiple unrelated inputs.}\citep{olah2020zoom} while having negligible impact on performance. Empirically I found that models trained with $\solu$ produced slightly ``cleaner'' activation patterns than standard choices like $\text{GeLU}$ though the effect is not substantial. The model is trained for 40000 steps with batch size 512 using the AdamW optimizer \citep{loshchilov2017decoupled} with learning rate $0.0003$, $\beta_1 = 0.9$, $\beta_2 = 0.999$ and weight decay $0.1$ on non-bias and non-embedding parameters.
+\citet{elhage2022solu} demonstrated that $\solu$ increases the interpretability of MLP neurons such as by reducing polysemanticity\footnote{Polysemanticity is the phenomenon where neurons respond to multiple unrelated inputs.}\citep{olah2020zoom} while having negligible impact on performance. Empirically I found that models trained with $\solu$ produced slightly ``cleaner'' activation patterns than standard choices like $\text{GeLU}$, though the effect is not substantial. The model is trained for 40000 steps with batch size 512 using the AdamW optimizer \citep{loshchilov2017decoupled} with learning rate $0.0003$, $\beta_1 = 0.9$, $\beta_2 = 0.999$ and weight decay $0.1$ on non-bias and non-embedding parameters.
 
 \section{Three simplifying properties} \label{sec:simplify}
-
-\input{figures/eval_table.tex}
 
 This section lays down and provides empirical evidence to several appealing properties of the trained model that make it particularly friendly to mechanistic analysis. The remainder of this report will base its argument on such simplifications.
 
 \subsection{\ttgpt solves \ttt}
+
+\input{figures/eval_table.tex}
 
 The first observation is that a one-layer transformer is sufficient to solve the task almost optimally. One of the advantages of working with a toy problem like \ttt is that the optimal policy can be computed exactly, by enumerating all game sequences. This makes evaluation much simpler as we can directly compare the trained models to the optimal model. \cref{table:eval} shows such comparisons with the optimal model for \ttgpt, a two-layer counterpart\footnote{The two-layer model uses the same hyperparameters, except having two layers and is trained with a lower weight decay of 0.03 (as it failed to converge with weight decay 0.1).} and a baseline constant output model. \ttgpt achieves much better performance than random and approaches 100\% accuracy on other classification metrics. Surprisingly, it even outperforms the two-layer transformer which may be attributed to reduced overfitting. I thereby conclude that \ttgpt solves \ttt and thus the investigation of \emph{``How does a sequence model solve \ttt?''} can be limited to \emph{``How does \ttgpt solve \ttt?''}.
 
@@ -229,7 +229,7 @@ The first observation is that a one-layer transformer is sufficient to solve the
 
 \input{figures/attention.tex}
 
-The second observation is that the model appears to have learnt attention patterns that is independent of the input sequence. From the example attention map in \cref{fig:attn-pattern}, we see that both attention heads use chequerboard-like attention patterns. Heuristically, it appears that \texttt{Head0} is performing ``attend to all moves played by the opponent'' and \texttt{Head1} is doing the same but for the current player. Since the player order in \ttt is always the same (alternates between \texttt{X} and \texttt{O}), it is very likely that the attention pattern is derived from positional information alone.
+The second observation is that the model appears to have learnt attention patterns that is independent of the input sequence. From the example attention map in \cref{fig:attn-pattern}, we see that both attention heads use chequerboard-like attention patterns. Heuristically, it appears that \texttt{Head0} is performing ``attend to all moves played by the opponent'' and \texttt{Head1} is doing the same but for the current player. Since the player order in \ttt is always alternates between \texttt{X} and \texttt{O}, it is very likely that the attention pattern is derived from positional information alone.
 
 To confirm the above intuition analytically, I perform sensitivity analysis of the attention pattern to identify which inputs have the most affect. To do so, I study a function $a^{(i)}$ that calculates the unnormalised attention paid by token $t_q$ at position $p_q$ on another token $t_k$ at position $p_k$, for attention head $i$. This can be done by unfolding the embedding and attention calculation as described by \cref{eq:embed,eq:attn}, giving the following definition:
 \begin{equation*}
@@ -247,19 +247,18 @@ To confirm the above intuition analytically, I perform sensitivity analysis of t
          & = \layernorm((\m{W}_E)_{t_k} + (\m{W}_P)_{p_k})^T
     \end{aligned}
 \end{equation*}
-Treating $t_q, p_q, t_k, p_k$ as independent, uniformly distributed random variables, one can decompose the variance of $a^{(i)}$ into those explained by first-order terms (i.e. each input individually), second-order terms (i.e. interactions between pairs of inputs) and higher-order terms using Sobol's method \citep{sobol1993sensitivity,sobol2001global}. As shown in \cref{fig:attn-sobol}, nearly all of the variance can be explained by second-order interactions between $p_1$ and $p_2$. This matches our intuition since chequerboard attention patterns requires second-order interactions yet are purely positional. Thus, \ttgpt uses attention patterns that are input-independent and so \emph{the attention matrices $\m{A}^{(0)}, \m{A}^{(1)}$ are constants}.
 
-\todo{Maybe characterise what the attention does here?}
+Treating $t_q, p_q, t_k, p_k$ as independent, uniformly distributed random variables, one can decompose the variance of $a^{(i)}$ into those explained by first-order terms (i.e. each input individually), second-order terms (i.e. interactions between pairs of inputs) and higher-order terms using Sobol's method \citep{sobol1993sensitivity,sobol2001global}. As shown in \cref{fig:attn-sobol}, nearly all of the variance can be explained by second-order interactions between $p_1$ and $p_2$. This matches our intuition since chequerboard attention patterns requires second-order interactions yet are purely positional. Thus, \ttgpt uses attention patterns that are input-independent and so \emph{the attention matrices $\m{A}^{(0)}, \m{A}^{(1)}$ are constant, chequerboard-like matrices}.
 
 \subsection{Output is only a function of MLP activations} \label{sec:simplify-output}
 
 The last observation is that the skip connection around the MLP layer has minimal effect on the output logits, and thus can be ignored in our subsequent analysis. This property can be shown empirically by artificially removing the skip connection during inference (i.e. setting $\m{H}_2 = \text{MLP}(\layernorm(\m{H}_1))$) and studying its effects on the performance of the model. The comparison shown in \cref{table:eval} confirms such assertion, as the top move accuracy of the modified network only drops by $0.83\%$ and remains significantly better than chance.
 
-The insignificance of the MLP skip connection means that we can narrow down the analysis to the MLP activations only. If we can understand how the MLP neurons respond to inputs and their corresponding effects on the output logits, we can explain most of the behaviour of \ttgpt.
+The insignificance of the MLP skip connection means that we can narrow down the analysis to the MLP activations only. If we can understand how the MLP neurons respond to inputs and characterise their corresponding effects on the output logits, we can explain most of the behaviour of \ttgpt.
 
 \section{Zooming in: MLP neurons}
 
-Given the simplifications from \cref{sec:simplify}, this section dives into the two circuits around the MLP layer that define the model's behaviour: The ``input circuit'' --- how do the MLP neurons respond to inputs, and the ``output circuit'' -- how do the activated neurons affect the output logits. The analysis will be done in two steps. Firstly, \cref{sec:neurons-that-matter} identifies the neurons that contribute the most to the model's performance. In the process, I discover that most of the behaviour can be explained by a small subset of neurons. Then, \cref{sec:neurons-visualisation} characterises the role of each of such neuron on the behaviour of the model.
+Given the simplifications from \cref{sec:simplify}, this section dives into the two circuits around the MLP layer that define the model's behaviour: The ``input circuit''---how do the MLP neurons respond to inputs, and the ``output circuit''---how do the activated neurons affect the output logits. The analysis will be done in two steps. Firstly, \cref{sec:neurons-that-matter} identifies the neurons that contribute the most to the model's performance. In the process, I discover that most of the behaviour can be explained by a small subset of neurons. Then, \cref{sec:neurons-visualisation} characterises the role of each of such neuron on the behaviour of the model.
 
 \subsection{Neurons that matter} \label{sec:neurons-that-matter}
 
@@ -267,18 +266,16 @@ Given the simplifications from \cref{sec:simplify}, this section dives into the 
 
 \ttgpt has 512 MLP neurons, which even in this toy problem is too many to be human comprehensible. To proceed, it is necessary to narrow down the number of MLP neurons for in-depth analysis.
 
-However, identifying which neurons are the most ``important'' is non-trivial task. A naive approach might measure how often a neuron is ``active'' (e.g., larger than some threshold) across a diverse sample of game sequences. Unfortunately, this neglects the importance of neurons that only fire in response to particular inputs yet has a strong influence on the output logits. Another method might be to identify the neurons with the largest output logits influence by linearising the output circuit $(\m{W}_{out} + \v{1}_s \v{b}_{out}) \m{W_U}$. This however assumes each neuron fires with equal probability and equal magnitude, which is not guaranteed. For example, some neurons might never fire at all yet appear to have a large effect according to the output circuit.
+However, identifying which neurons are the most ``important'' is non-trivial task. A naive approach might measure how often a neuron is ``active'' (e.g., larger than some threshold) across a diverse sample of game sequences. Unfortunately, this neglects the importance of neurons that only fire in response to particular inputs yet has a strong influence on the output logits. Another method might be to identify the neurons with the largest output logits influence by inspecting the output circuit $(\m{W}_{out} + \v{1}_s \v{b}_{out}) \m{W_U}$. This however assumes each neuron fires with equal probability and equal magnitude, which is not guaranteed. For example, some neurons might never be activated at all yet appear to have a large effect according to the output circuit.
 
 Instead, I propose to take an empirical approach to measure neuron importance. To measure the significance of neuron $n$, I evaluate the performance of a patched version of \ttgpt where neuron $n$ is removed entirely. Concretely, the importance of a neuron is given by the increase in KL divergence from the optimal model of the patched model verses the original model, evaluated on a sample of 4096 games. The method is inspired by activation patching \citep{meng2022locating,vig2020investigating} which is commonly used to identify core components of a network.
 
-\cref{fig:neuron-importance} shows that only a small proportion of neurons have a significant impact on the model's performance. Speculatively, this might be attributed to the use of SoLU non-linearity and weight decay which promotes sparse activations. To further quantify how many neurons can be ignored while still capturing most of the model's behaviour, I evaluate pruned versions of \ttgpt where $n\%$ of the least important neurons are removed. The results in \cref{fig:neuron-pruning} reveals that nearly all of the performance can be recovered from only 30\% of the neurons.
-
-Interestingly, \cref{fig:neuron-importance} suggests that there are
+\cref{fig:neuron-importance} shows that only a small proportion of neurons have a significant impact on the model's performance. Speculatively, this might be attributed to the use of SoLU non-linearity and weight decay which promotes sparse activations. To further quantify how many neurons can be ignored while still capturing most of the model's behaviour, I evaluate pruned versions of \ttgpt where $k\%$ of the least important neurons are removed. The results in \cref{fig:neuron-pruning} reveals that 70\% of the neurons can be removed by preserving nearly most of the performance. Interestingly, \cref{fig:neuron-importance} suggests that there are
 approximately $30\%$ of neurons that \emph{negatively} impacts the model's performance. I believe this is due to estimation error from only using a subset of games, since from pruning such neurons does not actually result in improved performance as shown in \cref{fig:neuron-pruning}.
 
 \subsection{Understanding the neurons} \label{sec:neurons-visualisation}
 
-Given the core neurons identified in \cref{sec:neurons-that-matter}, we proceed to analyse each neuron's role in the model.
+Given the core neurons identified in \cref{sec:neurons-that-matter}, we proceed to analyse each neuron's role.
 
 \subsubsection{Input circuits}
 
@@ -309,7 +306,7 @@ Furthermore, we have $\m{H}_0 = \m{E} \m{W}_E + \m{W}_P$ (\cref{eq:embed}). Sinc
     + \m{A}^{(1)} \m{E} \m{W}_{h_1}
     + \v{1}_s \v{b}
 \end{equation}
-where:
+where
 \begin{equation*}
     \begin{aligned}
         \m{W}_p
@@ -326,7 +323,7 @@ where:
     \end{aligned}
 \end{equation*}
 
-Decomposing the pre-activations into circuits are useful as they each have an interpretable meaning. Referring to \cref{eq:four-circuits}, the $\m{W}_p$ circuit encapsulates all positional information, thus it captures how the neurons react to the current turn number. The $\m{W}_e$ circuit only involves position-wise operators, thus it measures how the current move affect the neurons. The $\m{W}_{h_0}$ circuits trace how inputs at other positions affect each neuron via attention \texttt{Head0}. From \cref{sec:simplify-attn}, attention \texttt{Head0} roughly serves the purpose of ``attend to the opponent's moves so far'' and thus we may interpret the $\m{W}_{h_0}$ circuits as measuring ``how do the opponent's moves affect each neuron?''. Similarly, attention \texttt{Head1} approximately attends to the current player's moves so far, and so the $\m{W}_{h_1}$ circuits measure ``how do my moves so far affect each neuron?''.
+Decomposing the pre-activations into circuits are useful as they each have an interpretable meaning. Referring to \cref{eq:four-circuits}, the $\m{W}_p$ circuit encapsulates all positional information, thus it captures how the neurons react to the current turn number. The $\m{W}_e$ circuit only involves position-wise operators, thus it measures how the current move affect the neurons. The $\m{W}_{h_0}$ circuits trace how inputs at other positions affect each neuron via attention \texttt{Head0}. From \cref{sec:simplify-attn}, attention \texttt{Head0} roughly serves the purpose of ``attend to the opponent's moves so far'' and thus we may interpret the $\m{W}_{h_0}$ circuits as measuring ``how do the opponent's moves affect each neuron?''. Similarly, attention \texttt{Head1} approximately attends to the current player's moves so far, and so the $\m{W}_{h_1}$ circuits measure ``how do the current player's moves so far affect each neuron?''.
 
 \subsubsection{Output circuit}
 
@@ -336,15 +333,17 @@ The output circuit is considerably simpler since \cref{sec:simplify-output} has 
 
 \input{figures/neuron_sample.tex}
 
-For each neuron, the data-dependent input circuits $\m{W}_e$, $\m{W}_{h_0}$ and $\m{W}_{h_1}$ each give a scalar for how much a neuron reacts to a given move on the board. Such values are best visualised as a 3x3 grids. The output logits is composed of two components: The move logits and the special token logits. Since they conceptually represent different quantities, they are plotted separately. An example visualising the 508\textsuperscript{th} neuron (denoted as \texttt{N508}) is shown in \cref{fig:neuron-sample}. The visualisation strategy is successful as it is immediately clear what this neuron is performing: It identifies three-in-a-rows down in the middle column for player \texttt{O}.
+For each neuron, the data-dependent input circuits $\m{W}_e$, $\m{W}_{h_0}$ and $\m{W}_{h_1}$ each give a scalar for how much a neuron reacts to a given move on the board. Such values are best visualised as a 3x3 grids. The output logits is composed of two components: The move logits and the special token logits. Since they conceptually represent different quantities, I plotted separately. An example visualising the 508\textsuperscript{th} neuron (denoted as \texttt{N508}) is shown in \cref{fig:neuron-sample}. The visualisation strategy is successful as it is immediately clear what this neuron is performing: It identifies three-in-a-rows down in the middle column for player \texttt{O}.
 
 \input{figures/neuron_categories.tex}
 
-We can now scale up the visualisation strategy detailed in \cref{fig:neuron-sample} to the rest of the neurons identified in \cref{sec:neurons-that-matter}. Manually inspecting the visualisations reveals that many of neurons are interpretable as they implement certain ``rules'' of the task. The neurons with the most obvious interpretation are the ``\texttt{X} wins'' (\cref{fig:neurons-x-win}) and the ``\texttt{O} wins'' (\cref{fig:neurons-o-win}) neurons. Such neurons react the most strongly to moves via the $\m{W}_{h_1}$ circuit (i.e. moves played by the current player) to determine whether the next token should be a winner's token. It also makes use of the turn number via the $\m{W}_p$ circuit to determine whether the winner should be \texttt{X} for odd-numbered turns, or \texttt{O} for even-numbered turns. Surprisingly, there appears to be exactly 16 of such neurons in \ttgpt, corresponding to the 8 three-in-a-row combinations for each player.
+We can now scale up the visualisation strategy detailed in \cref{fig:neuron-sample} to the rest of the neurons identified in \cref{sec:neurons-that-matter}. Manually inspecting the visualisations reveals that many of neurons are interpretable as they implement certain ``rules'' of the task. The full visualisation can be found in \cref{sec:anatomy}.
+
+The neurons with the most obvious interpretation are the ``\texttt{X} wins'' (\cref{fig:neurons-x-win}) and the ``\texttt{O} wins'' (\cref{fig:neurons-o-win}) neurons. Such neurons react the most strongly to moves via the $\m{W}_{h_1}$ circuit (i.e. moves played by the current player) to determine whether the next token should be a winner's token. It also makes use of the turn number via the $\m{W}_p$ circuit to determine whether the winner should be \texttt{X} for odd-numbered turns, or \texttt{O} for even-numbered turns. Surprisingly, there appears to be exactly 16 of such neurons in \ttgpt, corresponding to the 8 three-in-a-row combinations for each player.
 
 Some other neurons mainly affect the predicted move distributions. For example, I identified ``single move suppression'' neurons that prevent moves that have been played before to be played again on the board (\cref{fig:neurons-suppress-single}). These neurons react to inputs from both the $\m{W}_{h_0}$ and $\m{W}_{h_1}$ circuits which can interpreted as ``no matter who played the move before, the same move cannot be played again''.
 
-Another interest class of neurons are those who affect groups of moves. One outstanding collection of neurons are the ``winning move suppression'' neurons which discourages the probability of playing moves that immediately results in a win. The existence of such neurons matches our intuition as the true task of the model is to predict the game tree distributions, where immediately winning moves have the least number possible continuations. Unlike the ``\texttt{X} wins'' or ``\texttt{O} wins'' neurons that mainly respond to the $\m{W}_{h_1}$ circuit, these neurons reacts strongly to the $\m{W}_{h_0}$ circuit as it needs to attend to the moves played by the opponent. One might argue that the existence of such neurons suggests that \ttgpt has learned to ``think one step ahead'' as the negatives of predicting a winning move only shows after two steps. I tend not to believe in such claim as I observed no other evidence that \ttgpt utilises the min-max nature of the game to make its predictions.
+Another interest class of neurons are those who affect groups of moves. One outstanding collection of neurons are the ``winning move suppression'' neurons which discourages the probability of playing moves that immediately results in a win. The existence of such neurons matches our intuition as the true task of the model is to predict the game tree distributions, where immediately winning moves have the least number possible continuations. Unlike the ``\texttt{X} wins'' or ``\texttt{O} wins'' neurons that mainly respond to the $\m{W}_{h_1}$ circuit, these neurons reacts strongly to the $\m{W}_{h_0}$ circuit as it needs to attend to the moves played by the opponent. One might argue that the existence of such neurons suggests that \ttgpt has learned to ``think one step ahead'' as the penalty of predicting a winning move only comes into play after two steps. I tend not to believe in such claim as I observed no other evidence that \ttgpt utilises the min-max nature of the game to make its predictions.
 
 % \subsection{Prediction out-of-distribution}
 
@@ -367,8 +366,74 @@ The board of \ttt also contains many symmetries geometrically, such reflectional
 
 \section{Conclusion}
 
+The experiments of this paper show that a one-layer transformer solves \ttt in an interpretable way. By virtue of the simplicity of the task, I discovered that \ttgpt implements a particularly simple solution to the task which is friendly to mechanistic analysis. This not only allowed me to identify the most important neurons in the network, but also be able to characterise the behaviour of each neuron to the level of inputs features and their effects on the output logits, effectively fully dissecting the behaviour of the model.
+
+Understanding \ttgpt so thoroughly allows us to reason about what the model has or has not learned. For example, \ttgpt has learned the alternating nature of the game, but has not learned the geometric symmetries of the board, possibly due to the lack of geometric invariances in the output predictions. This demonstrates that simply doing next-token prediction does not necessarily lead to the most general solution, even if the model is capable of solving the task perfectly. I believe this project is a step towards understanding the fundamental limits of next-token prediction.
+
+This project only focuses on the interpretability of a toy model. Future work could take the insights gained here and test them on more complex models such as OrthelloGPT \cite{orthello-gpt} or simple text generation models \cite{olsson2022context}. The techniques used in this project may not scale well to larger models (e.g. there may be too many neurons to analyse manually) so more automated methods such as sparse probing \cite{gurnee2023finding} or attribution patching \cite{nanda2023attribution} can be incorporated.
+
 \newpage
 
 \bibliography{references}
+
+\newpage
+
+\appendix
+
+\section{Anatomy of \ttgpt}
+\label{sec:anatomy}
+
+% Make a table of the neurons
+\begin{table}[h]
+    \centering
+    \caption{Manual classification of the top 30\% of neurons in \ttgpt.}
+    \begin{tabular}{p{0.3\textwidth}p{0.6\textwidth}}
+        \toprule
+        Category
+         & Neurons                                                                                                                                                  \\
+        \midrule
+        Wins for \texttt{[X]}
+         & 246, 52, 46, 32, 417, 121, 154, 74                                                                                                                       \\
+        Wins for \texttt{[O]}
+         & 269, 147, 50, 508, 67, 511, 193                                                                                                                          \\
+        Draws
+         & 135, 244, 245, 124                                                                                                                                       \\
+        Anti-draw
+         & 376                                                                                                                                                      \\
+        Anti-win
+         & 119, 436, 17, 243, 72, 10, 274, 86, 45, 241, 92, 137, 118, 73, 157, 70                                                                                   \\
+        Winner by position
+         & 266, 472                                                                                                                                                 \\
+        Move suppression (single)
+         & 319, 433, 455, 110, 62, 505, 342, 271, 83, 151, 277, 20, 354, 97, 339, 499, 323, 183, 177, 456, 171, 91, 240, 224, 501, 397, 94, 392, 192, 367, 216, 450 \\
+        Move suppression (multiple)
+         & 478, 322, 482, 262, 370, 428, 203, 174, 18, 340, 419, 310, 459, 502, 336, 57, 47, 14, 101, 453, 377, 506, 172, 105, 371, 148, 509, 429, 102, 489         \\
+        Move suppression and winner by position
+         & 194, 324, 270, 161, 152, 130, 469, 248, 22, 61, 420, 51, 19, 284, 169, 90, 424                                                                           \\
+        Multi-purpose
+         & 487, 209, 483, 6, 167                                                                                                                                    \\
+        Others
+         & 104, 412, 155, 507, 237, 117, 256, 414, 120, 34, 88, 408, 470, 82, 349, 49, 201, 422, 85, 280, 359, 335, 129, 287, 264, 156, 461                         \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{center}
+    \begin{figure*}[h]
+        \centering
+        \includegraphics[trim={0 69cm 0 0},clip,width=\textwidth]{../out/figs/neuron_anatomy.pdf}
+        \caption{Top neurons of \ttgpt visualised, ordered from the most the least important.}
+    \end{figure*}
+    \begin{figure*}[h]
+        \centering
+        \includegraphics[trim={0 20.7cm 0 20.4cm},clip,width=\textwidth]{../out/figs/neuron_anatomy.pdf}
+        \caption*{Top neurons of \ttgpt visualised, ordered from the most the least important. (cont.)}
+    \end{figure*}
+    \begin{figure*}[h]
+        \centering
+        \includegraphics[trim={0 0 0 68.5cm},clip,width=\textwidth]{../out/figs/neuron_anatomy.pdf}
+        \caption*{Top neurons of \ttgpt visualised, ordered from the most the least important. (cont.)}
+    \end{figure*}
+\end{center}
 
 \end{document}

@@ -1,12 +1,12 @@
 \begin{figure}[t]
     \centering
-    \begin{subfigure}[t]{0.46\textwidth}
+    \begin{subfigure}[t]{0.43\textwidth}
         \includegraphics[width=\linewidth]{../out/figs/neuron_importance.pdf}
         \caption{Effect of removing each neuron on the KL divergence, ordered from lowest to highest. Notice the y-axis is in log-scale.}
         \label{fig:neuron-importance}
     \end{subfigure}%
     \hfill
-    \begin{subfigure}[t]{0.50\textwidth}
+    \begin{subfigure}[t]{0.47\textwidth}
         \includegraphics[width=\linewidth]{../out/figs/neuron_pruning.pdf}
         \caption{The retained performance of pruning the bottom $n\%$ of neurons, ordered according to \cref{fig:neuron-importance}. The dotted line marks the 70\% threshold where there appears to be a clear cut-off.}
         \label{fig:neuron-pruning}

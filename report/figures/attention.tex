@@ -1,15 +1,16 @@
 \begin{figure}[t]
     \centering
-    \begin{subfigure}[c]{0.55\textwidth}
+    \begin{subfigure}[t]{0.55\textwidth}
         \includegraphics[width=\linewidth]{../out/figs/attn_pattern.pdf}
-        \caption{Attention patterns}
+        \caption{A sample attention pattern of \ttgpt. Other inputs generally have the same pattern too.}
         \label{fig:attn-pattern}
     \end{subfigure}%
-    \begin{subfigure}[c]{0.45\textwidth}
+    \hfill
+    \begin{subfigure}[t]{0.42\textwidth}
         \includegraphics[width=\linewidth]{../out/figs/sobol.pdf}
-        \caption{Sobol indices}
+        \caption{Sobol decomposition of the unnormalised attention logits. Most of the variance can be explained by second order interactions between positional embeddings.}
         \label{fig:attn-sobol}
     \end{subfigure}
-    \caption{heading}
+    \caption{The attention patterns of \ttgpt is approximately constant.}
     \label{fig:attn}
 \end{figure}
